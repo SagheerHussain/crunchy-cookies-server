@@ -1,0 +1,151 @@
+const Brand = require("../models/Brand.model");
+const cloudinary = require("../config/cloudinary");
+
+/* -------------------------------- GET ----------------------------- */
+const getBrands = async (req, res) => {
+  try {
+    const brands = await Brand.find().lean();
+    if (brands.length === 0) {
+      return res
+        .status(200)
+        .json({ success: false, message: "Brands not found" });
+    }
+    return res.status(200).json({
+      success: true,
+      message: "Brands found successfully",
+      data: brands,
+    });
+  } catch (error) {
+    return res.status(500).json({ success: false, error: error.message });
+  }
+};
+const getBrandById = async (req, res) => {
+  try {
+    const { id } = req.params;
+    const brand = await Brand.findById({ _id: id }).lean();
+    if (!brand) {
+      return res
+        .status(200)
+        .json({ success: false, message: "Brand not found" });
+    }
+    return res.status(200).json({
+      success: true,
+      message: "Brand found successfully",
+      data: brand,
+    });
+  } catch (error) {
+    return res.status(500).json({ success: false, error: error.message });
+  }
+};
+
+/* -------------------------------- POST ----------------------------- */
+const createBrand = async (req, res) => {
+  try {
+    const { name, slug, countryCode } = req.body;
+
+    const logo = req.file.path;
+
+    if (!name || !slug) {
+      return res
+        .status(200)
+        .json({ success: false, message: "Brand not found" });
+    }
+
+    const cloudinaryResponse = await cloudinary.uploader.upload(logo, {
+      folder: "CRUNCHY COOKIES ASSETS",
+    });
+
+    const brand = await Brand.create({
+      name,
+      slug,
+      logo: cloudinaryResponse.secure_url,
+      countryCode,
+      isActive: true,
+    });
+
+    return res.status(201).json({
+      success: true,
+      message: "Brand created successfully",
+      data: brand,
+    });
+  } catch (error) {
+    return res.status(500).json({ success: false, error: error.message });
+  }
+};
+
+/* -------------------------------- PUT ----------------------------- */
+const updateBrand = async (req, res) => {
+  try {
+    const { id } = req.params;
+    const { name, slug, countryCode, isActive } = req.body;
+
+    const logo = req.file.path;
+    let cloudinaryResponse;
+    if (logo) {
+      cloudinaryResponse = await cloudinary.uploader.upload(logo, {
+        folder: "CRUNCHY COOKIES ASSETS",
+      });
+      cloudinaryResponse = cloudinaryResponse.secure_url;
+    }
+
+    const brandData = await Brand.findById({ _id: id }).lean();
+    if (!brandData) {
+      return res
+        .status(200)
+        .json({ success: false, message: "Brand not found" });
+    }
+
+    const brand = await Brand.findByIdAndUpdate(
+      { _id: id },
+      { name, slug, countryCode, logo: logo ? cloudinaryResponse : brandData.logo, isActive }
+    );
+
+    return res.status(201).json({
+      success: true,
+      message: "Brand updated successfully",
+      data: brand,
+    });
+  } catch (error) {
+    return res.status(500).json({ success: false, error: error.message });
+  }
+};
+
+/* -------------------------------- DELETE ----------------------------- */
+const deleteBrand = async (req, res) => {
+  try {
+    const { id } = req.params;
+    const brand = await Brand.findOneAndDelete({ _id: id });
+
+    return res.status(201).json({
+      success: true,
+      message: "Brand deleted successfully",
+      data: brand,
+    });
+  } catch (error) {
+    return res.status(500).json({ success: false, error: error.message });
+  }
+};
+
+const bulkDelete = async (req, res) => {
+  try {
+    const { ids } = req.params;
+    const brand = await Brand.deleteMany({ _id: { $in: ids } });
+
+    return res.status(201).json({
+      success: true,
+      message: "Brands deleted successfully",
+      data: brand,
+    });
+  } catch (error) {
+    return res.status(500).json({ success: false, error: error.message });
+  }
+};
+
+module.exports = {
+  getBrands,
+  getBrandById,
+  createBrand,
+  updateBrand,
+  deleteBrand,
+  bulkDelete,
+};

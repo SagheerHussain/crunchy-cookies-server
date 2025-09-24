@@ -1,0 +1,145 @@
+const Occasion = require("../models/Occasion.model");
+const cloudinary = require("../config/cloudinary");
+
+/* -------------------------------- GET ----------------------------- */
+const getOccasions = async (req, res) => {
+  try {
+    const occasions = await Occasion.find().lean();
+    if (occasions.length === 0) {
+      return res
+        .status(200)
+        .json({ success: false, message: "Occasions not found" });
+    }
+    return res.status(200).json({
+      success: true,
+      message: "Occasions found successfully",
+      data: occasions,
+    });
+  } catch (error) {
+    return res.status(500).json({ success: false, error: error.message });
+  }
+};
+const getOccasionById = async (req, res) => {
+  try {
+    const { id } = req.params;
+    const occasion = await Occasion.findById({ _id: id }).lean();
+    if (!occasion) {
+      return res
+        .status(200)
+        .json({ success: false, message: "Occasion not found" });
+    }
+    return res.status(200).json({
+      success: true,
+      message: "Occasion found successfully",
+      data: occasion,
+    });
+  } catch (error) {
+    return res.status(500).json({ success: false, error: error.message });
+  }
+};
+
+/* -------------------------------- POST ----------------------------- */
+const createOccasion = async (req, res) => {
+  try {
+    const { name, slug } = req.body;
+
+    if (!name || !slug) {
+      return res
+        .status(200)
+        .json({ success: false, message: "Occasion not found" });
+    }
+
+    const image = req.file.path;
+
+    const cloudinaryResponse = await cloudinary.uploader.upload(image, {
+      folder: "CRUNCHY COOKIES ASSETS",
+    });
+
+    const occasion = await Occasion.create({ name, slug, image: cloudinaryResponse.secure_url, isActive: true });
+
+    return res.status(201).json({
+      success: true,
+      message: "Occasion created successfully",
+      data: occasion,
+    });
+  } catch (error) {
+    return res.status(500).json({ success: false, error: error.message });
+  }
+};
+
+/* -------------------------------- PUT ----------------------------- */
+const updateOccasion = async (req, res) => {
+  try {
+    const { id } = req.params;
+    const { name, slug, isActive } = req.body;
+
+    const image = req.file.path;
+    let cloudinaryResponse;
+    if (image) {
+      cloudinaryResponse = await cloudinary.uploader.upload(image, {
+        folder: "CRUNCHY COOKIES ASSETS",
+      });
+      cloudinaryResponse = cloudinaryResponse.secure_url;
+    }
+
+    const occasionData = await Occasion.findById({ _id: id }).lean();
+    if (!occasionData) {
+      return res
+        .status(200)
+        .json({ success: false, message: "Occasion not found" });
+    }
+
+    const occasion = await Occasion.findByIdAndUpdate(
+      { _id: id },
+      { name, slug, image: cloudinaryResponse ? cloudinaryResponse : occasionData.image, isActive }
+    );
+
+    return res.status(201).json({
+      success: true,
+      message: "Occasion updated successfully",
+      data: occasion,
+    });
+  } catch (error) {
+    return res.status(500).json({ success: false, error: error.message });
+  }
+};
+
+/* -------------------------------- DELETE ----------------------------- */
+const deleteOccasion = async (req, res) => {
+  try {
+    const { id } = req.params;
+    const occasion = await Occasion.findOneAndDelete({ _id: id });
+
+    return res.status(201).json({
+      success: true,
+      message: "Occasion deleted successfully",
+      data: occasion,
+    });
+  } catch (error) {
+    return res.status(500).json({ success: false, error: error.message });
+  }
+};
+
+const bulkDelete = async (req, res) => {
+  try {
+    const { ids } = req.params;
+    const occasion = await Occasion.deleteMany({ _id: { $in: ids } });
+
+    return res.status(201).json({
+      success: true,
+      message: "Occasion deleted successfully",
+      data: occasion,
+    });
+  } catch (error) {
+    return res.status(500).json({ success: false, error: error.message });
+  }
+};
+
+module.exports = {
+  getOccasions,
+  getOccasionById,
+  createOccasion,
+  updateOccasion,
+  deleteOccasion,
+  bulkDelete,
+};
