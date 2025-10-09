@@ -1,15 +1,70 @@
+// controllers/product.controller.js
 const Product = require("../models/Product.model");
+const cloudinary = require("../config/cloudinary");
 
+/* ------------------------- helpers ------------------------- */
+const toNum  = (x, d = undefined) => (x == null || x === "" ? d : Number(x));
+const toBool = (x, d = false) =>
+  typeof x === "boolean" ? x : String(x).toLowerCase() === "true";
+
+function maybeJSON(v) {
+  if (v == null || v === "") return undefined;
+  if (typeof v === "object") return v;
+  try { return JSON.parse(v); } catch { return undefined; }
+}
+
+// Accept: key, key[], key[0] styles or JSON string
+function pickArray(body, key) {
+  if (Array.isArray(body[key])) return body[key];
+  if (key in body) {
+    const j = maybeJSON(body[key]);
+    if (Array.isArray(j)) return j;
+    return body[key] != null && body[key] !== "" ? [body[key]] : [];
+  }
+  return Object.keys(body)
+    .filter(k => k === `${key}[]` || k.startsWith(`${key}[`))
+    .sort()
+    .map(k => body[k])
+    .filter(v => v !== undefined && v !== null && v !== "");
+}
+
+function pickDimensionsCreate(body) {
+  const direct = maybeJSON(body.dimensions) || body.dimensions || {};
+  const w = body["dimensions[width]"]  ?? body['dimensions["width"]']  ?? direct.width;
+  const h = body["dimensions[height]"] ?? body['dimensions["height"]'] ?? direct.height;
+  const width  = toNum(w);
+  const height = toNum(h);
+  const out = {};
+  if (width  !== undefined) out.width  = width;
+  if (height !== undefined) out.height = height;
+  return Object.keys(out).length ? out : undefined;
+}
+
+// dimensions from multipart (update) — returns numbers (or undefined) separately
+function pickDimensionsUpdate(body) {
+  const direct = maybeJSON(body.dimensions) || body.dimensions || {};
+  const w = body["dimensions[width]"]  ?? body['dimensions["width"]']  ?? direct.width;
+  const h = body["dimensions[height]"] ?? body['dimensions["height"]'] ?? direct.height;
+  return { width: toNum(w), height: toNum(h) };
+}
+
+function deriveStock(total, remaining) {
+  const t = Number(total ?? 0);
+  const r = Number(remaining ?? 0);
+  const sold = Math.max(0, t - r);
+  let status = "in_stock";
+  if (r === 0) status = "out_of_stock";
+  else if (r > 0 && r < 10) status = "low_stock";
+  return { totalPieceSold: sold, stockStatus: status };
+}
+
+/* --------------------------- paging ------------------------ */
 const getPagination = (q = {}) => {
-  const rawPage  = parseInt(q.page, 10);
+  const rawPage = parseInt(q.page, 10);
   const rawLimit = parseInt(q.limit, 10);
-
-  const page  = Number.isFinite(rawPage)  && rawPage  > 0 ? rawPage  : 1;
-  let   limit = Number.isFinite(rawLimit) && rawLimit > 0 ? rawLimit : 20;
-
-  // hard cap = 20
+  const page = Number.isFinite(rawPage) && rawPage > 0 ? rawPage : 1;
+  let limit = Number.isFinite(rawLimit) && rawLimit > 0 ? rawLimit : 20;
   if (limit > 20) limit = 20;
-
   const skip = (page - 1) * limit;
   return { page, limit, skip };
 };
@@ -17,7 +72,7 @@ const getPagination = (q = {}) => {
 const splitToIds = (v) => {
   if (!v) return null;
   if (Array.isArray(v)) return v.filter(Boolean);
-  return String(v).split(',').map(s => s.trim()).filter(Boolean);
+  return String(v).split(",").map(s => s.trim()).filter(Boolean);
 };
 
 /* -------------------------------- GET ----------------------------- */
@@ -35,17 +90,7 @@ const getProducts = async (req, res) => {
     ]);
 
     if (products.length === 0) {
-      return res.status(200).json({
-        success: false,
-        message: "Products not found",
-        meta: {
-          page, limit, total, totalPages: Math.ceil(total / limit) || 0,
-          hasPrev: page > 1,
-          hasNext: page * limit < total,
-          prevPage: page > 1 ? page - 1 : null,
-          nextPage: page * limit < total ? page + 1 : null,
-        }
-      });
+      return res.status(200).json({ success: false, message: "Products not found" });
     }
 
     return res.status(200).json({
@@ -69,19 +114,11 @@ const getProductById = async (req, res) => {
   try {
     const { id } = req.params;
     const product = await Product.findById({ _id: id })
-      .populate("brand")
-      .populate("categories")
-      .populate("type")
-      .populate("occasions")
-      .populate("recipients")
-      .populate("colors")
-      .populate("packagingOption")
-      .populate("suggestedProducts")
+      .populate("brand categories type occasions recipients colors packagingOption suggestedProducts")
       .lean();
+
     if (!product) {
-      return res
-        .status(200)
-        .json({ success: false, message: "Product not found" });
+      return res.status(200).json({ success: false, message: "Product not found" });
     }
     return res.status(200).json({
       success: true,
@@ -102,33 +139,26 @@ const getFilteredProducts = async (req, res) => {
     } = req.query;
 
     const query = {};
-
-    // multi-select support (comma separated or repeated params)
-    const catIds  = splitToIds(category || categories);
-    const occIds  = splitToIds(occasion);
-    const recIds  = splitToIds(recipient);
-    const colIds  = splitToIds(color);
+    const catIds = splitToIds(category || categories);
+    const occIds = splitToIds(occasion);
+    const recIds = splitToIds(recipient);
+    const colIds = splitToIds(color);
 
     if (catIds?.length) query.categories = { $in: catIds };
-    if (occIds?.length) query.occasions  = { $in: occIds };
+    if (occIds?.length) query.occasions = { $in: occIds };
     if (recIds?.length) query.recipients = { $in: recIds };
-    if (colIds?.length) query.colors     = { $in: colIds };
-
+    if (colIds?.length) query.colors = { $in: colIds };
     if (packagingOption) query.packagingOption = packagingOption;
 
-    // price range (optional)
     if (minPrice != null || maxPrice != null) {
       query.price = {};
       if (minPrice != null) query.price.$gte = Number(minPrice);
       if (maxPrice != null) query.price.$lte = Number(maxPrice);
     }
 
-    // sorting
     let sortObj = {};
     if (priceLabel === "low_to_high") sortObj.price = 1;
     if (priceLabel === "high_to_low") sortObj.price = -1;
-
-    // optional createdAt sorting
     if (sort === "newest") sortObj.createdAt = -1;
     if (sort === "oldest") sortObj.createdAt = 1;
 
@@ -176,65 +206,72 @@ const getFilteredProducts = async (req, res) => {
 /* -------------------------------- POST ----------------------------- */
 const createProduct = async (req, res) => {
   try {
-    // parse body (multipart fields may be strings)
-    const body = req.body;
+    const b = req.body;
 
-    const qualities = parseMaybeJSON(body.qualities, []);
-    const categories = parseMaybeJSON(body.categories, []);
-    const occasions = parseMaybeJSON(body.occasions, []);
-    const recipients = parseMaybeJSON(body.recipients, []);
-    const colors = parseMaybeJSON(body.colors, []);
-    const dimensions = parseMaybeJSON(body.dimensions, {});
+    // files
+    const featuredFile = req.files?.featuredImage?.[0] || null;
+    const galleryFiles = req.files?.images || [];
 
-    // files from multer
-    const featured = req.files?.featuredImage?.[0];
-    const gallery = req.files?.images || [];
+    let featuredImageUrl = b.featuredImage || null;
+    if (featuredFile) {
+      const up = await cloudinary.uploader.upload(featuredFile.path, { folder: "CRUNCHY COOKIES ASSETS" });
+      featuredImageUrl = up.secure_url;
+    }
+    const imageUrls = [];
+    for (const f of galleryFiles) {
+      const up = await cloudinary.uploader.upload(f.path, { folder: "CRUNCHY COOKIES ASSETS" });
+      imageUrls.push(up.secure_url);
+    }
+    const images = imageUrls.map(url => ({ url }));
 
-    const featuredImage = fileToPublicUrl(featured);
-    const images = gallery.map(f => ({ url: fileToPublicUrl(f) }));
+    // arrays
+    const qualities         = pickArray(b, "qualities");
+    const categories        = pickArray(b, "categories");
+    const occasions         = pickArray(b, "occasions");
+    const recipients        = pickArray(b, "recipients");
+    const colors            = pickArray(b, "colors");
+    const suggestedProducts = pickArray(b, "suggestedProducts");
 
-    // IMPORTANT: remainingStocks required by schema
-    const totalStocks = Number(body.totalStocks ?? 0);
-    const remainingStocks = body.remainingStocks != null
-      ? Number(body.remainingStocks)
-      : totalStocks; // default = totalStocks
+    // numbers / booleans / dimensions
+    const totalStocks     = toNum(b.totalStocks, 0);
+    const remainingStocks = b.remainingStocks != null ? toNum(b.remainingStocks) : totalStocks;
+    const dimensions      = pickDimensionsCreate(b);
+
+    const { totalPieceSold, stockStatus } = deriveStock(totalStocks, remainingStocks);
 
     const payload = {
-      title: body.title,
-      description: body.description,
+      title: b.title,
+      description: b.description,
       qualities,
-      price: body.price,
-      discount: body.discount ?? 0,
-      currency: body.currency || 'QAR',
+      price: toNum(b.price),
+      discount: toNum(b.discount, 0),
+      currency: b.currency || "QAR",
       totalStocks,
       remainingStocks,
-      stockStatus: body.stockStatus || 'in_stock',
-      brand: body.brand || null,
+      totalPieceSold,
+      stockStatus,                    // auto
+      brand: b.brand || null,
       categories,
-      type: body.type || null,
+      type: b.type || null,
       occasions,
       recipients,
       colors,
-      packagingOption: body.packagingOption || null,
-      condition: body.condition || 'new',
-      featuredImage,  // single
-      images,         // [{url}]
-      suggestedProducts: parseMaybeJSON(body.suggestedProducts, []),
-      isActive: body.isActive != null ? body.isActive : true,
-      isFeatured: body.isFeatured != null ? body.isFeatured : false,
-      sku: body.sku,
-      dimensions
+      packagingOption: b.packagingOption || null,
+      condition: b.condition || "new",
+      featuredImage: featuredImageUrl,
+      images,
+      suggestedProducts,
+      isActive:   toBool(b.isActive, true),
+      isFeatured: toBool(b.isFeatured, false),
+      sku: b.sku,
     };
 
-    const created = await Product.create(payload);
+    if (dimensions) payload.dimensions = dimensions;
 
-    return res.status(201).json({
-      success: true,
-      message: "Product created successfully",
-      data: created,
-    });
+    const created = await Product.create(payload);
+    res.status(201).json({ success: true, message: "Product created successfully", data: created });
   } catch (error) {
-    return res.status(500).json({ success: false, error: error.message });
+    res.status(500).json({ success: false, error: error.message });
   }
 };
 
@@ -242,53 +279,81 @@ const createProduct = async (req, res) => {
 const updateProduct = async (req, res) => {
   try {
     const { id } = req.params;
-    const body = req.body;
-
-    // parse multi-value fields (if provided)
+    const b = req.body;
     const toUpdate = {};
-    if (body.title != null) toUpdate.title = body.title;
-    if (body.description != null) toUpdate.description = body.description;
-    if (body.qualities != null) toUpdate.qualities = parseMaybeJSON(body.qualities, []);
-    if (body.price != null) toUpdate.price = body.price;
-    if (body.discount != null) toUpdate.discount = body.discount;
-    if (body.currency != null) toUpdate.currency = body.currency;
-    if (body.totalStocks != null) toUpdate.totalStocks = Number(body.totalStocks);
-    if (body.remainingStocks != null) toUpdate.remainingStocks = Number(body.remainingStocks);
-    if (body.stockStatus != null) toUpdate.stockStatus = body.stockStatus;
-    if (body.brand != null) toUpdate.brand = body.brand;
-    if (body.categories != null) toUpdate.categories = parseMaybeJSON(body.categories, []);
-    if (body.type != null) toUpdate.type = body.type;
-    if (body.occasions != null) toUpdate.occasions = parseMaybeJSON(body.occasions, []);
-    if (body.recipients != null) toUpdate.recipients = parseMaybeJSON(body.recipients, []);
-    if (body.colors != null) toUpdate.colors = parseMaybeJSON(body.colors, []);
-    if (body.packagingOption != null) toUpdate.packagingOption = body.packagingOption;
-    if (body.condition != null) toUpdate.condition = body.condition;
-    if (body.suggestedProducts != null) toUpdate.suggestedProducts = parseMaybeJSON(body.suggestedProducts, []);
-    if (body.isActive != null) toUpdate.isActive = body.isActive;
-    if (body.isFeatured != null) toUpdate.isFeatured = body.isFeatured;
-    if (body.sku != null) toUpdate.sku = body.sku;
-    if (body.dimensions != null) toUpdate.dimensions = parseMaybeJSON(body.dimensions, {});
 
-    // files from multer
-    const featured = req.files?.featuredImage?.[0];
-    const gallery = req.files?.images || [];
+    // primitives
+    if ("title" in b) toUpdate.title = b.title;
+    if ("description" in b) toUpdate.description = b.description;
+    if ("price" in b) toUpdate.price = toNum(b.price);
+    if ("discount" in b) toUpdate.discount = toNum(b.discount, 0);
+    if ("currency" in b) toUpdate.currency = b.currency;
+    if ("totalStocks" in b) toUpdate.totalStocks = toNum(b.totalStocks);
+    if ("remainingStocks" in b) toUpdate.remainingStocks = toNum(b.remainingStocks);
+    if ("stockStatus" in b) toUpdate.stockStatus = b.stockStatus; // optional manual override
+    if ("brand" in b) toUpdate.brand = b.brand;
+    if ("type" in b) toUpdate.type = b.type;
+    if ("packagingOption" in b) toUpdate.packagingOption = b.packagingOption;
+    if ("condition" in b) toUpdate.condition = b.condition;
+    if ("isActive" in b) toUpdate.isActive = toBool(b.isActive, true);
+    if ("isFeatured" in b) toUpdate.isFeatured = toBool(b.isFeatured, false);
+    if ("sku" in b) toUpdate.sku = b.sku;
 
-    if (featured) {
-      toUpdate.featuredImage = fileToPublicUrl(featured);
+    // arrays
+    for (const k of ["qualities","categories","occasions","recipients","colors","suggestedProducts"]) {
+      const present = (k in b) || Object.keys(b).some(x => x === `${k}[]` || x.startsWith(`${k}[`));
+      if (present) toUpdate[k] = pickArray(b, k);
     }
 
-    if (gallery.length) {
-      // overwrite images with newly uploaded ones
-      toUpdate.images = gallery.map(f => ({ url: fileToPublicUrl(f) }));
+    // dimensions: only set subfields that actually came
+    const { width, height } = pickDimensionsUpdate(b);
+    if (width  !== undefined) toUpdate["dimensions.width"]  = width;
+    if (height !== undefined) toUpdate["dimensions.height"] = height;
+
+    // files
+    const featuredFile = req.files?.featuredImage?.[0];
+    const galleryFiles = req.files?.images || [];
+
+    if (featuredFile) {
+      const up = await cloudinary.uploader.upload(featuredFile.path, { folder: "CRUNCHY COOKIES ASSETS" });
+      toUpdate.featuredImage = up.secure_url;
+    } else if ("featuredImage" in b && b.featuredImage) {
+      toUpdate.featuredImage = b.featuredImage; // URL allowed
     }
 
-    const updated = await Product.findByIdAndUpdate(id, toUpdate, { new: true });
+    if (galleryFiles.length) {
+      const urls = [];
+      for (const f of galleryFiles) {
+        const up = await cloudinary.uploader.upload(f.path, { folder: "CRUNCHY COOKIES ASSETS" });
+        urls.push(up.secure_url);
+      }
+      toUpdate.images = urls.map(url => ({ url }));
+    } else if ("images" in b || "images[]" in b || Object.keys(b).some(k => k.startsWith("images["))) {
+      const arr = pickArray(b, "images").map(u => (typeof u === "string" ? { url: u } : u)).filter(Boolean);
+      toUpdate.images = arr;
+    }
 
-    return res.status(200).json({
-      success: true,
-      message: "Product updated successfully",
-      data: updated,
-    });
+    // --- derived fields: if totalStocks or remainingStocks came, recompute ---
+    if ("totalStocks" in toUpdate || "remainingStocks" in toUpdate) {
+      // get the current values to combine with provided ones
+      const current = await Product.findById(id).select("totalStocks remainingStocks").lean();
+      const total = ("totalStocks" in toUpdate) ? toUpdate.totalStocks : current?.totalStocks;
+      const remain = ("remainingStocks" in toUpdate) ? toUpdate.remainingStocks : current?.remainingStocks;
+      const { totalPieceSold, stockStatus } = deriveStock(total, remain);
+      toUpdate.totalPieceSold = totalPieceSold;
+      // only override stockStatus if user didn’t explicitly set it
+      if (!("stockStatus" in b)) {
+        toUpdate.stockStatus = stockStatus;
+      }
+    }
+
+    const updated = await Product.findByIdAndUpdate(
+      id,
+      { $set: toUpdate },
+      { new: true, runValidators: true }
+    );
+
+    return res.status(200).json({ success: true, message: "Product updated successfully", data: updated });
   } catch (error) {
     return res.status(500).json({ success: false, error: error.message });
   }
@@ -313,9 +378,7 @@ const deleteProduct = async (req, res) => {
 const bulkDelete = async (req, res) => {
   try {
     const { ids } = req.params;
-    const deleteProduct = await Product.deleteMany({
-      _id: { $in: ids },
-    });
+    const deleteProduct = await Product.deleteMany({ _id: { $in: ids } });
 
     return res.status(201).json({
       success: true,

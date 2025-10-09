@@ -1,9 +1,9 @@
-const Category = require("../models/Category.model");
+const Color = require("../models/Color.model");
 
 /* -------------------------------- GET ----------------------------- */
 const getColors = async (req, res) => {
   try {
-    const colors = await Category.find().lean();
+    const colors = await Color.find().lean();
     if (colors.length === 0) {
       return res
         .status(200)
@@ -21,7 +21,7 @@ const getColors = async (req, res) => {
 const getColorById = async (req, res) => {
   try {
     const { id } = req.params;
-    const color = await Category.findById({ _id: id }).lean();
+    const color = await Color.findById({ _id: id }).lean();
     if (!color) {
       return res
         .status(200)
@@ -40,15 +40,23 @@ const getColorById = async (req, res) => {
 /* -------------------------------- POST ----------------------------- */
 const createColor = async (req, res) => {
   try {
-    const { name, mode, value, slug } = req.body;
+    const { name, mode, value } = req.body;
 
-    if (!name || !mode || !value || !slug) {
+    if (!name || !mode || !value) {
       return res
         .status(200)
         .json({ success: false, message: "Color not found" });
     }
 
-    const color = await Category.create({ name, mode, value, slug, isActive: true });
+    const slug = (name ?? "")
+      .toLowerCase()
+      .trim()
+      .replace(/[^a-z0-9\s-]/g, "") // non-alphanumerics remove
+      .replace(/\s+/g, "-")         // spaces → hyphen
+      .replace(/-+/g, "-")          // multiple hyphens → single
+      .replace(/^-|-$/g, "")    // trim leading/trailing -
+
+    const color = await Color.create({ name, mode, value, slug, isActive: true });
 
     return res.status(201).json({
       success: true,
@@ -64,8 +72,20 @@ const createColor = async (req, res) => {
 const updateColor = async (req, res) => {
   try {
     const { id } = req.params;
-    const { name, mode, value, slug, isActive } = req.body;
-    const color = await Category.findByIdAndUpdate(
+    const { name, mode, value, isActive } = req.body;
+
+    const colorData = await Color.findById({ _id: id })
+
+    const slug = name ? (name ?? "")
+      .toLowerCase()
+      .trim()
+      .replace(/[^a-z0-9\s-]/g, "") // non-alphanumerics remove
+      .replace(/\s+/g, "-")         // spaces → hyphen
+      .replace(/-+/g, "-")          // multiple hyphens → single
+      .replace(/^-|-$/g, "")    // trim leading/trailing -
+      : colorData?.slug;
+
+    const color = await Color.findByIdAndUpdate(
       { _id: id },
       { name, mode, value, slug, isActive }
     );
@@ -84,7 +104,7 @@ const updateColor = async (req, res) => {
 const deleteColor = async (req, res) => {
   try {
     const { id } = req.params;
-    const color = await Category.findOneAndDelete({ _id: id });
+    const color = await Color.findOneAndDelete({ _id: id });
 
     return res.status(201).json({
       success: true,
@@ -99,7 +119,7 @@ const deleteColor = async (req, res) => {
 const bulkDelete = async (req, res) => {
   try {
     const { ids } = req.params;
-    const color = await Category.deleteMany({ _id: { $in: ids } });
+    const color = await Color.deleteMany({ _id: { $in: ids } });
 
     return res.status(201).json({
       success: true,

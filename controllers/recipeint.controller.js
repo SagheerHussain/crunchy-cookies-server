@@ -45,17 +45,23 @@ const createRecipient = async (req, res) => {
   try {
     const {
       name,
-      slug,
     } = req.body;
 
     if (
-      !name ||
-      !slug
+      !name
     ) {
       return res
         .status(200)
         .json({ success: false, message: "All fields are required" });
     }
+
+    const slug = (name ?? "")
+    .toLowerCase()
+    .trim()
+    .replace(/[^a-z0-9\s-]/g, "") // non-alphanumerics remove
+    .replace(/\s+/g, "-")         // spaces → hyphen
+    .replace(/-+/g, "-")          // multiple hyphens → single
+    .replace(/^-|-$/g, "")    // trim leading/trailing -
 
     const image = req.file.path;
     
@@ -86,7 +92,6 @@ const updateRecipient = async (req, res) => {
     const { id } = req.params;
     const {
       name,
-      slug,
       isActive,
     } = req.body;
 
@@ -106,6 +111,15 @@ const updateRecipient = async (req, res) => {
         .status(200)
         .json({ success: false, message: "Recipient not found" });
     }
+
+    const slug = name ? (name ?? "")
+    .toLowerCase()
+    .trim()
+    .replace(/[^a-z0-9\s-]/g, "") // non-alphanumerics remove
+    .replace(/\s+/g, "-")         // spaces → hyphen
+    .replace(/-+/g, "-")          // multiple hyphens → single
+    .replace(/^-|-$/g, "")    // trim leading/trailing -
+    : recipientData?.slug;
 
     const updateRecipient = await Recipient.findByIdAndUpdate(
       { _id: id },

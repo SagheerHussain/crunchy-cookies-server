@@ -41,9 +41,9 @@ const getOccasionById = async (req, res) => {
 /* -------------------------------- POST ----------------------------- */
 const createOccasion = async (req, res) => {
   try {
-    const { name, slug } = req.body;
+    const { name } = req.body;
 
-    if (!name || !slug) {
+    if (!name) {
       return res
         .status(200)
         .json({ success: false, message: "Occasion not found" });
@@ -54,6 +54,14 @@ const createOccasion = async (req, res) => {
     const cloudinaryResponse = await cloudinary.uploader.upload(image, {
       folder: "CRUNCHY COOKIES ASSETS",
     });
+
+    const slug = (name ?? "")
+    .toLowerCase()
+    .trim()
+    .replace(/[^a-z0-9\s-]/g, "") // non-alphanumerics remove
+    .replace(/\s+/g, "-")         // spaces → hyphen
+    .replace(/-+/g, "-")          // multiple hyphens → single
+    .replace(/^-|-$/g, "")    // trim leading/trailing -
 
     const occasion = await Occasion.create({ name, slug, image: cloudinaryResponse.secure_url, isActive: true });
 
@@ -71,7 +79,7 @@ const createOccasion = async (req, res) => {
 const updateOccasion = async (req, res) => {
   try {
     const { id } = req.params;
-    const { name, slug, isActive } = req.body;
+    const { name, isActive } = req.body;
 
     const image = req.file.path;
     let cloudinaryResponse;
@@ -88,6 +96,15 @@ const updateOccasion = async (req, res) => {
         .status(200)
         .json({ success: false, message: "Occasion not found" });
     }
+
+    const slug = name ? (name ?? "")
+    .toLowerCase()
+    .trim()
+    .replace(/[^a-z0-9\s-]/g, "") // non-alphanumerics remove
+    .replace(/\s+/g, "-")         // spaces → hyphen
+    .replace(/-+/g, "-")          // multiple hyphens → single
+    .replace(/^-|-$/g, "")    // trim leading/trailing -
+    : occasionData?.slug
 
     const occasion = await Occasion.findByIdAndUpdate(
       { _id: id },
