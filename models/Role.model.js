@@ -8,6 +8,5 @@ const RoleSchema = new mongoose.Schema(
     { timestamps: true }
 );
 
-const Role = mongoose.model("Role", RoleSchema);
-
-module.exports = Role;
+module.exports =
+  mongoose.models.Role || mongoose.model("Role", RoleSchema);

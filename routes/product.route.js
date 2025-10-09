@@ -6,6 +6,7 @@ const upload = require("../upload");
 const {
   getProducts,
   getProductById,
+  getFilteredProducts,
   createProduct,
   updateProduct,
   deleteProduct,

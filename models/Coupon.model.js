@@ -1,5 +1,7 @@
 const mongoose = require("mongoose");
 
+const COUPON_TYPE = ['fixed', 'percentage'];
+
 const couponSchema = new mongoose.Schema(
     {
       code: { type: String, required: true, uppercase: true, unique: true },

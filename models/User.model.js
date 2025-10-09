@@ -25,8 +25,6 @@ const userSchema = new mongoose.Schema(
   { timestamps: true }
 );
 
-userSchema.index({ phone: 1 }, { unique: true, sparse: true });
+module.exports = mongoose.models.Role || mongoose.model("User", userSchema);
 
-const User = mongoose.model("User", userSchema);
-
-module.exports = User;
+ 
