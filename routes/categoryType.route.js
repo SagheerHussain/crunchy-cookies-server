@@ -1,8 +1,6 @@
 const express = require("express");
 const router = express.Router();
 
-const upload = require("../upload");
-
 const {
     getCategoryTypes,
     getCategoryTypeById,
@@ -17,10 +15,10 @@ router.get("/lists", getCategoryTypes);
 router.get("/lists/:id", getCategoryTypeById);
 
 /* -------------------------------- POST ----------------------------- */
-router.post("/", upload.single("image"), createCategoryType);
+router.post("/", createCategoryType);
 
 /* -------------------------------- PUT ----------------------------- */
-router.put("/update/:id", upload.single("image"), updateCategoryType);
+router.put("/update/:id", updateCategoryType);
 
 /* -------------------------------- DELETE ----------------------------- */
 router.delete("/delete/:id", deleteCategoryType);

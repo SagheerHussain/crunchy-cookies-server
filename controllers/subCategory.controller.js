@@ -41,19 +41,29 @@ const getSubCategoryById = async (req, res) => {
 /* -------------------------------- POST ----------------------------- */
 const createSubCategory = async (req, res) => {
   try {
-    const { name, slug, parent } = req.body;
+    const { name, parent } = req.body;
 
-    if (!name || !slug || !parent) {
+    if (!name || !parent) {
       return res
         .status(200)
         .json({ success: false, message: "SubCategory not found" });
     }
+
+    const slug = (name ?? "")
+    .toLowerCase()
+    .trim()
+    .replace(/[^a-z0-9\s-]/g, "") // non-alphanumerics remove
+    .replace(/\s+/g, "-")         // spaces → hyphen
+    .replace(/-+/g, "-")          // multiple hyphens → single
+    .replace(/^-|-$/g, "");    // trim leading/trailing -
 
     const image = req.file.path;
    
     const cloudinaryResponse = await cloudinary.uploader.upload(image, {
       folder: "CRUNCHY COOKIES ASSETS",
     });
+
+    console.log(name, image, slug,parent)
 
     const subCategory = await SubCategory.create({ name, slug, parent, image: cloudinaryResponse.secure_url, isActive: true });
 
@@ -71,12 +81,11 @@ const createSubCategory = async (req, res) => {
 const updateSubCategory = async (req, res) => {
   try {
     const { id } = req.params;
-    const { name, slug, parent, isActive } = req.body;
+    const { name, parent, isActive } = req.body;
 
-    const image = req.file.path;
     let cloudinaryResponse;
-    if (image) {
-      cloudinaryResponse = await cloudinary.uploader.upload(image, {
+    if (req.file) {
+      cloudinaryResponse = await cloudinary.uploader.upload(req.file.path, {
         folder: "CRUNCHY COOKIES ASSETS",
       });
       cloudinaryResponse = cloudinaryResponse.secure_url;
@@ -90,9 +99,21 @@ const updateSubCategory = async (req, res) => {
         .json({ success: false, message: "SubCategory not found" });
     }
 
+    const slug = name ? (name ?? "")
+    .toLowerCase()
+    .trim()
+    .replace(/[^a-z0-9\s-]/g, "") // non-alphanumerics remove
+    .replace(/\s+/g, "-")         // spaces → hyphen
+    .replace(/-+/g, "-")          // multiple hyphens → single
+    .replace(/^-|-$/g, "")    // trim leading/trailing -
+    : subCategoryData?.slug;
+
+    console.log(name, slug, parent)
+    console.log(cloudinaryResponse, req.file)
+
     const subCategory = await SubCategory.findByIdAndUpdate(
       { _id: id },
-      { name, slug, parent, image: cloudinaryResponse ? cloudinaryResponse.secure_url : subCategoryData.image, isActive }
+      { name, slug, parent, image: cloudinaryResponse ? cloudinaryResponse : subCategoryData.image, isActive }
     );
 
     return res.status(201).json({

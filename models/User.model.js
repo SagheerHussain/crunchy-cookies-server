@@ -16,7 +16,7 @@ const userSchema = new mongoose.Schema(
     phone: { type: String, index: true },
     password: { type: String, required: true }, // store hash only
     gender: { type: String, enum: GENDER },
-    roles: [{ type: mongoose.Schema.Types.ObjectId, ref: "Role" }],
+    role: { type: String, enum: ['ADMIN', 'CUSTOMER', 'SUPER_ADMIN'], default: 'CUSTOMER' },
     dob: { type: Date },
     lastLoginAt: { type: Date },
     status: { type: String, enum: ["active", "blocked"], default: "active" },
@@ -25,6 +25,6 @@ const userSchema = new mongoose.Schema(
   { timestamps: true }
 );
 
-module.exports = mongoose.models.Role || mongoose.model("User", userSchema);
+module.exports = mongoose.models.User || mongoose.model("User", userSchema);
 
  

@@ -1,6 +1,14 @@
 const express = require("express");
 const router = express.Router();
-const { getColors, getColorById, createColor, updateColor, deleteColor, bulkDelete } = require("../controllers/color.controller");
+
+const {
+  getColors,
+  getColorById,
+  createColor,
+  updateColor,
+  deleteColor,
+  bulkDelete,
+} = require("../controllers/color.controller");
 
 /* -------------------------------- GET ----------------------------- */
 router.get("/lists", getColors);

@@ -41,13 +41,22 @@ const getCategoryById = async (req, res) => {
 /* -------------------------------- POST ----------------------------- */
 const createCategory = async (req, res) => {
   try {
-    const { name, slug } = req.body;
+    const { name } = req.body;
 
-    if (!name || !slug) {
+    if (!name) {
       return res
         .status(200)
         .json({ success: false, message: "Category not found" });
     }
+
+    const slug =
+      (name ?? "")
+        .toLowerCase()
+        .trim()
+        .replace(/[^a-z0-9\s-]/g, "") // non-alphanumerics remove
+        .replace(/\s+/g, "-")         // spaces → hyphen
+        .replace(/-+/g, "-")          // multiple hyphens → single
+        .replace(/^-|-$/g, "");       // trim leading/trailing -
 
     const image = req.file.path;
     let cloudinaryResponse;
@@ -57,6 +66,8 @@ const createCategory = async (req, res) => {
       });
       cloudinaryResponse = cloudinaryResponse.secure_url;
     }
+
+    console.log(name, req.file, slug);
 
     const category = await Category.create({ name, slug, image: cloudinaryResponse, isActive: true });
 
@@ -74,12 +85,11 @@ const createCategory = async (req, res) => {
 const updateCategory = async (req, res) => {
   try {
     const { id } = req.params;
-    const { name, slug, isActive } = req.body;
+    const { name, isActive } = req.body;
 
-    const image = req.file.path;
-    let cloudinaryResponse;
-    if (image) {
-      cloudinaryResponse = await cloudinary.uploader.upload(image, {
+    let cloudinaryResponse = "";
+    if (req.file) {
+      cloudinaryResponse = await cloudinary.uploader.upload(req.file.path, {
         folder: "CRUNCHY COOKIES ASSETS",
       });
       cloudinaryResponse = cloudinaryResponse.secure_url;
@@ -91,6 +101,16 @@ const updateCategory = async (req, res) => {
         .status(200)
         .json({ success: false, message: "Category not found" });
     }
+
+    const slug = name ? (name ?? "")
+      .toLowerCase()
+      .trim()
+      .replace(/[^a-z0-9\s-]/g, "") // non-alphanumerics remove
+      .replace(/\s+/g, "-")         // spaces → hyphen
+      .replace(/-+/g, "-")          // multiple hyphens → single
+      .replace(/^-|-$/g, "")    // trim leading/trailing -
+      :
+      categoryData?.slug;
 
     const category = await Category.findByIdAndUpdate(
       { _id: id },

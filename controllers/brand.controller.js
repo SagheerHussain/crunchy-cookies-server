@@ -41,19 +41,26 @@ const getBrandById = async (req, res) => {
 /* -------------------------------- POST ----------------------------- */
 const createBrand = async (req, res) => {
   try {
-    const { name, slug, countryCode } = req.body;
+    const { name, countryCode } = req.body;
 
-    const logo = req.file.path;
-
-    if (!name || !slug) {
+    if (!name) {
       return res
         .status(200)
         .json({ success: false, message: "Brand not found" });
     }
 
-    const cloudinaryResponse = await cloudinary.uploader.upload(logo, {
+    const cloudinaryResponse = await cloudinary.uploader.upload(req.file.path, {
       folder: "CRUNCHY COOKIES ASSETS",
     });
+
+    const slug =
+      (name ?? "")
+        .toLowerCase()
+        .trim()
+        .replace(/[^a-z0-9\s-]/g, "") // non-alphanumerics remove
+        .replace(/\s+/g, "-")         // spaces → hyphen
+        .replace(/-+/g, "-")          // multiple hyphens → single
+        .replace(/^-|-$/g, "");       // trim leading/trailing -
 
     const brand = await Brand.create({
       name,
@@ -77,12 +84,11 @@ const createBrand = async (req, res) => {
 const updateBrand = async (req, res) => {
   try {
     const { id } = req.params;
-    const { name, slug, countryCode, isActive } = req.body;
+    const { name, countryCode, isActive } = req.body;
 
-    const logo = req.file.path;
     let cloudinaryResponse;
-    if (logo) {
-      cloudinaryResponse = await cloudinary.uploader.upload(logo, {
+    if (req.file) {
+      cloudinaryResponse = await cloudinary.uploader.upload(req.file.path, {
         folder: "CRUNCHY COOKIES ASSETS",
       });
       cloudinaryResponse = cloudinaryResponse.secure_url;
@@ -95,9 +101,19 @@ const updateBrand = async (req, res) => {
         .json({ success: false, message: "Brand not found" });
     }
 
+    const slug = name ? (name ?? "")
+      .toLowerCase()
+      .trim()
+      .replace(/[^a-z0-9\s-]/g, "") // non-alphanumerics remove
+      .replace(/\s+/g, "-")         // spaces → hyphen
+      .replace(/-+/g, "-")          // multiple hyphens → single
+      .replace(/^-|-$/g, "")    // trim leading/trailing -
+      :
+      brandData?.slug;
+
     const brand = await Brand.findByIdAndUpdate(
       { _id: id },
-      { name, slug, countryCode, logo: logo ? cloudinaryResponse : brandData.logo, isActive }
+      { name, slug, countryCode, logo: cloudinaryResponse ? cloudinaryResponse : brandData.logo, isActive }
     );
 
     return res.status(201).json({

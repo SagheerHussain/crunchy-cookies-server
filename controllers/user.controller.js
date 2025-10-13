@@ -3,7 +3,7 @@ const User = require("../models/User.model");
 /* -------------------------------- GET ----------------------------- */
 const getUsers = async (req, res) => {
   try {
-    const users = await User.find().populate("roles").lean();
+    const users = await User.find().lean();
     if (users.length === 0) {
       return res
         .status(200)
@@ -40,8 +40,10 @@ const getUserById = async (req, res) => {
 /* -------------------------------- POST ----------------------------- */
 const createUser = async (req, res) => {
   try {
-    const { firstName, lastName, email, phone, password, gender, roles, dob } =
+    const { firstName, lastName, email, phone, password, gender, role, dob } =
       req.body;
+
+    console.log(req.body);
 
     if (!firstName || !lastName || !email || !phone || !password) {
       return res
@@ -56,7 +58,7 @@ const createUser = async (req, res) => {
       phone,
       password,
       gender,
-      roles,
+      role,
       dob,
     });
 

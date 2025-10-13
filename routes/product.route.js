@@ -5,6 +5,7 @@ const upload = require("../upload");
 
 const {
   getProducts,
+  getProductNames,
   getProductById,
   getFilteredProducts,
   createProduct,
@@ -17,6 +18,7 @@ const {
 router.get("/lists", getProducts);
 router.get("/lists/:id", getProductById);
 router.get("/lists/filter", getFilteredProducts);
+router.get("/names", getProductNames);
 
 /* -------------------------------- POST ----------------------------- */
 router.post(

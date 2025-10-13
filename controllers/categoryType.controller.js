@@ -43,25 +43,25 @@ const getCategoryTypeById = async (req, res) => {
 /* -------------------------------- POST ----------------------------- */
 const createCategoryType = async (req, res) => {
   try {
-    const { name, slug, parent } = req.body;
-
-    if (!name || !slug || !parent) {
+    const { name, parent } = req.body;
+    if (!name || !parent) {
       return res
         .status(200)
         .json({ success: false, message: "Category Type not found" });
     }
+    const slug = (name ?? "")
+    .toLowerCase()
+    .trim()
+    .replace(/[^a-z0-9\s-]/g, "") // non-alphanumerics remove
+    .replace(/\s+/g, "-")         // spaces → hyphen
+    .replace(/-+/g, "-")          // multiple hyphens → single
+    .replace(/^-|-$/g, "");    // trim leading/trailing -
 
-    const image = req.file.path;
-
-    const cloudinaryResponse = await cloudinary.uploader.upload(image, {
-      folder: "CRUNCHY COOKIES ASSETS",
-    });
 
     const categoryType = await CategoryType.create({
       name,
       slug,
       parent,
-      image: cloudinaryResponse.secure_url,
       isActive: true,
     });
 
@@ -79,16 +79,8 @@ const createCategoryType = async (req, res) => {
 const updateCategoryType = async (req, res) => {
   try {
     const { id } = req.params;
-    const { name, slug, isActive } = req.body;
+    const { name, parent, isActive } = req.body;
 
-    const image = req.file.path;
-    let cloudinaryResponse;
-    if (image) {
-      cloudinaryResponse = await cloudinary.uploader.upload(image, {
-        folder: "CRUNCHY COOKIES ASSETS",
-      });
-      cloudinaryResponse = cloudinaryResponse.secure_url;
-    }
     const categoryTypeData = await CategoryType.findById({ _id: id }).lean();
     if (!categoryTypeData) {
       return res
@@ -96,9 +88,18 @@ const updateCategoryType = async (req, res) => {
         .json({ success: false, message: "Category Type not found" });
     }
 
+    const slug = name ? (name ?? "")
+    .toLowerCase()
+    .trim()
+    .replace(/[^a-z0-9\s-]/g, "") // non-alphanumerics remove
+    .replace(/\s+/g, "-")         // spaces → hyphen
+    .replace(/-+/g, "-")          // multiple hyphens → single
+    .replace(/^-|-$/g, "")    // trim leading/trailing -
+    : categoryTypeData?.slug;
+
     const categoryType = await CategoryType.findByIdAndUpdate(
       { _id: id },
-      { name, slug, image: cloudinaryResponse ? cloudinaryResponse : categoryTypeData.image, isActive }
+      { name, slug, parent, isActive }
     );
 
     return res.status(201).json({

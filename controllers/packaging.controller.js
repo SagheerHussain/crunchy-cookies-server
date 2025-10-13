@@ -7,7 +7,7 @@ const getPackaging = async (req, res) => {
       .lean();
     if (packaging.length === 0) {
       return res
-        .status(200)    
+        .status(200)
         .json({ success: false, message: "Packaging not found" });
     }
     return res.status(200).json({
@@ -45,15 +45,24 @@ const createPackaging = async (req, res) => {
   try {
     const {
       name,
-      slug,
       materials,
     } = req.body;
 
-    if (!name || !slug || !materials) {
+    if (!name || !materials) {
       return res
         .status(200)
         .json({ success: false, message: "Packaging not found" });
     }
+
+    const slug = (name ?? "")
+      .toLowerCase()
+      .trim()
+      .replace(/[^a-z0-9\s-]/g, "") // non-alphanumerics remove
+      .replace(/\s+/g, "-")         // spaces → hyphen
+      .replace(/-+/g, "-")          // multiple hyphens → single
+      .replace(/^-|-$/g, "");    // trim leading/trailing -
+
+    console.log(name, slug, materials)
 
     const packaging = await Packaging.create({
       name,
@@ -78,10 +87,21 @@ const updatePackaging = async (req, res) => {
     const { id } = req.params;
     const {
       name,
-      slug,
       materials,
       isActive,
     } = req.body;
+
+    const packagingData = Packaging.findById({ _id: id });
+
+    const slug = name ? (name ?? "")
+      .toLowerCase()
+      .trim()
+      .replace(/[^a-z0-9\s-]/g, "") // non-alphanumerics remove
+      .replace(/\s+/g, "-")         // spaces → hyphen
+      .replace(/-+/g, "-")          // multiple hyphens → single
+      .replace(/^-|-$/g, "")   // trim leading/trailing -
+      :
+      packagingData?.slug;
 
     const packaging = await Packaging.findByIdAndUpdate(
       { _id: id },
