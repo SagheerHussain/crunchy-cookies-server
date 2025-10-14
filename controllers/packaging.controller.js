@@ -62,6 +62,8 @@ const createPackaging = async (req, res) => {
       .replace(/-+/g, "-")          // multiple hyphens → single
       .replace(/^-|-$/g, "");    // trim leading/trailing -
 
+    console.log(name, slug, materials)
+
     const packaging = await Packaging.create({
       name,
       slug,

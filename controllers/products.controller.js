@@ -1,11 +1,27 @@
 // controllers/product.controller.js
-const Product = require("../models/Product.model");
-const cloudinary = require("../config/cloudinary");
+const Product = require('../models/Product.model');
+const cloudinary = require('../config/cloudinary');
+const mongoose = require('mongoose');
+
+const AVAILABILITY = ['in_stock', 'low_stock', 'out_of_stock'];
 
 /* ------------------------- helpers ------------------------- */
-const toNum  = (x, d = undefined) => (x == null || x === "" ? d : Number(x));
-const toBool = (x, d = false) =>
-  typeof x === "boolean" ? x : String(x).toLowerCase() === "true";
+const isValidObjectId = (v) => mongoose.Types.ObjectId.isValid(v);
+
+const toNum = (v, fallback = undefined) => {
+  if (v === undefined || v === null || v === '') return fallback;
+  const n = Number(v);
+  return Number.isFinite(n) ? n : fallback;
+};
+
+const toBool = (v, fallback = false) => {
+  if (v === undefined || v === null || v === '') return fallback;
+  if (typeof v === 'boolean') return v;
+  const s = String(v).toLowerCase();
+  if (['true', '1', 'yes', 'on'].includes(s)) return true;
+  if (['false', '0', 'no', 'off'].includes(s)) return false;
+  return fallback;
+};
 
 function maybeJSON(v) {
   if (v == null || v === "") return undefined;
@@ -13,50 +29,85 @@ function maybeJSON(v) {
   try { return JSON.parse(v); } catch { return undefined; }
 }
 
-// Accept: key, key[], key[0] styles or JSON string
-function pickArray(body, key) {
-  if (Array.isArray(body[key])) return body[key];
-  if (key in body) {
-    const j = maybeJSON(body[key]);
-    if (Array.isArray(j)) return j;
-    return body[key] != null && body[key] !== "" ? [body[key]] : [];
-  }
-  return Object.keys(body)
-    .filter(k => k === `${key}[]` || k.startsWith(`${key}[`))
-    .sort()
-    .map(k => body[k])
-    .filter(v => v !== undefined && v !== null && v !== "");
-}
+const normalizeId = (v) => {
+  if (v === undefined || v === null) return undefined;
+  const s = typeof v === 'string' ? v.trim() : v;
+  if (s === '' || s === 'null' || s === 'undefined') return undefined;
+  return isValidObjectId(s) ? s : undefined;
+};
 
-function pickDimensionsCreate(body) {
-  const direct = maybeJSON(body.dimensions) || body.dimensions || {};
-  const w = body["dimensions[width]"]  ?? body['dimensions["width"]']  ?? direct.width;
-  const h = body["dimensions[height]"] ?? body['dimensions["height"]'] ?? direct.height;
-  const width  = toNum(w);
-  const height = toNum(h);
-  const out = {};
-  if (width  !== undefined) out.width  = width;
-  if (height !== undefined) out.height = height;
-  return Object.keys(out).length ? out : undefined;
-}
+const normalizeIdArray = (arr) => {
+  if (!arr) return undefined;
+  const xs = Array.isArray(arr) ? arr : [arr];
+  return xs
+    .map((v) => (typeof v === 'string' ? v.trim() : v))
+    .filter((v) => v && v !== 'null' && v !== 'undefined' && isValidObjectId(v));
+};
+
+// Accept: key, key[], key[0] styles or JSON string
+const pickArray = (body, key) => {
+  const direct = body[key];
+  if (Array.isArray(direct)) return direct;
+
+  if (typeof direct === 'string') {
+    // if it's JSON, parse; else treat single value
+    try {
+      const parsed = JSON.parse(direct);
+      if (Array.isArray(parsed)) return parsed;
+    } catch (_) { }
+    return direct ? [direct] : [];
+  }
+
+  // Collect k[] and k[i] variants
+  const out = [];
+  Object.keys(body).forEach((k) => {
+    if (k === `${key}[]`) {
+      const v = body[k];
+      if (Array.isArray(v)) out.push(...v);
+      else if (typeof v === 'string' && v.length) out.push(v);
+    } else if (k.startsWith(`${key}[`)) {
+      out.push(body[k]);
+    }
+  });
+  return out.filter((x) => x !== undefined && x !== null && x !== '');
+};
 
 // dimensions from multipart (update) — returns numbers (or undefined) separately
-function pickDimensionsUpdate(body) {
-  const direct = maybeJSON(body.dimensions) || body.dimensions || {};
-  const w = body["dimensions[width]"]  ?? body['dimensions["width"]']  ?? direct.width;
-  const h = body["dimensions[height]"] ?? body['dimensions["height"]'] ?? direct.height;
-  return { width: toNum(w), height: toNum(h) };
-}
+const pickDimensionsUpdate = (body) => {
+  let width, height;
 
-function deriveStock(total, remaining) {
-  const t = Number(total ?? 0);
-  const r = Number(remaining ?? 0);
+  if (body.dimensions) {
+    try {
+      const d = typeof body.dimensions === 'string' ? JSON.parse(body.dimensions) : body.dimensions;
+      if (d && typeof d === 'object') {
+        if (d.width !== undefined && d.width !== '') width = toNum(d.width);
+        if (d.height !== undefined && d.height !== '') height = toNum(d.height);
+      }
+    } catch (_) { }
+  }
+
+  if (body['dimensions.width'] !== undefined && body['dimensions.width'] !== '') {
+    width = toNum(body['dimensions.width']);
+  }
+  if (body['dimensions.height'] !== undefined && body['dimensions.height'] !== '') {
+    height = toNum(body['dimensions.height']);
+  }
+
+  return { width, height };
+};
+
+const deriveStock = (total, remain) => {
+  const t = Number(total || 0);
+  const r = Number(remain || 0);
   const sold = Math.max(0, t - r);
-  let status = "in_stock";
-  if (r === 0) status = "out_of_stock";
-  else if (r > 0 && r < 10) status = "low_stock";
-  return { totalPieceSold: sold, stockStatus: status };
-}
+
+  let stockStatus = 'in_stock';
+  if (t <= 0 || r <= 0) stockStatus = 'out_of_stock';
+  else if (r / t <= 0.15) stockStatus = 'low_stock';
+
+  return { totalPieceSold: sold, stockStatus };
+};
+
 
 /* --------------------------- paging ------------------------ */
 const getPagination = (q = {}) => {
@@ -79,18 +130,40 @@ const splitToIds = (v) => {
 const getProducts = async (req, res) => {
   try {
     const { page, limit, skip } = getPagination(req.query);
+    const { stockStatus, from, to } = req.query;
+
+    // build filters
+    const where = {};
+
+    // stock status (skip invalid or when asking "all")
+    if (stockStatus && AVAILABILITY.includes(String(stockStatus).toLowerCase())) {
+      where.stockStatus = String(stockStatus).toLowerCase();
+    }
+
+    // date range on createdAt
+    if (from || to) {
+      where.createdAt = {};
+      if (from) where.createdAt.$gte = new Date(from);
+      if (to) {
+        const end = new Date(to);
+        end.setHours(23, 59, 59, 999); // inclusive end-of-day
+        where.createdAt.$lte = end;
+      }
+    }
 
     const [products, total] = await Promise.all([
-      Product.find()
+      Product.find(where)
         .populate("brand categories type occasions recipients colors packagingOption suggestedProducts")
         .skip(skip)
         .limit(limit)
         .lean(),
-      Product.countDocuments({})
+      Product.countDocuments(where)
     ]);
 
     if (products.length === 0) {
-      return res.status(200).json({ success: false, message: "Products not found" });
+      return res.status(200).json({ success: true, message: "Products not found", data: [], meta: {
+        page, limit, total: 0, totalPages: 0, hasPrev: false, hasNext: false, prevPage: null, nextPage: null
+      }});
     }
 
     return res.status(200).json({
@@ -98,12 +171,15 @@ const getProducts = async (req, res) => {
       message: "Products found successfully",
       data: products,
       meta: {
-        page, limit, total, totalPages: Math.ceil(total / limit),
+        page,
+        limit,
+        total,
+        totalPages: Math.ceil(total / limit),
         hasPrev: page > 1,
         hasNext: page * limit < total,
         prevPage: page > 1 ? page - 1 : null,
         nextPage: page * limit < total ? page + 1 : null,
-      }
+      },
     });
   } catch (error) {
     return res.status(500).json({ success: false, error: error.message });
@@ -203,75 +279,93 @@ const getFilteredProducts = async (req, res) => {
   }
 };
 
+const getProductNames = async (req, res) => {
+  try {
+    const products = await Product.find({}).lean();
+    if (products.length === 0) {
+      return res.status(200).json({ success: false, message: "Product not found" });
+    }
+    console.log("products", products);
+    const names = products?.map((product) => ({ title: product.title, _id: product._id }));
+    return res.status(200).json({ success: true, data: names });
+  } catch (error) {
+    return res.status(500).json({ success: false, error: error.message });
+  }
+}
+
 /* -------------------------------- POST ----------------------------- */
 const createProduct = async (req, res) => {
   try {
     const b = req.body;
 
-    // files
-    const featuredFile = req.files?.featuredImage?.[0] || null;
-    const galleryFiles = req.files?.images || [];
-
-    let featuredImageUrl = b.featuredImage || null;
-    if (featuredFile) {
-      const up = await cloudinary.uploader.upload(featuredFile.path, { folder: "CRUNCHY COOKIES ASSETS" });
-      featuredImageUrl = up.secure_url;
-    }
-    const imageUrls = [];
-    for (const f of galleryFiles) {
-      const up = await cloudinary.uploader.upload(f.path, { folder: "CRUNCHY COOKIES ASSETS" });
-      imageUrls.push(up.secure_url);
-    }
-    const images = imageUrls.map(url => ({ url }));
-
-    // arrays
-    const qualities         = pickArray(b, "qualities");
-    const categories        = pickArray(b, "categories");
-    const occasions         = pickArray(b, "occasions");
-    const recipients        = pickArray(b, "recipients");
-    const colors            = pickArray(b, "colors");
-    const suggestedProducts = pickArray(b, "suggestedProducts");
-
-    // numbers / booleans / dimensions
-    const totalStocks     = toNum(b.totalStocks, 0);
-    const remainingStocks = b.remainingStocks != null ? toNum(b.remainingStocks) : totalStocks;
-    const dimensions      = pickDimensionsCreate(b);
-
-    const { totalPieceSold, stockStatus } = deriveStock(totalStocks, remainingStocks);
-
-    const payload = {
+    const doc = {
       title: b.title,
+      sku: b.sku,
       description: b.description,
-      qualities,
+      qualities: pickArray(b, 'qualities'),
       price: toNum(b.price),
       discount: toNum(b.discount, 0),
-      currency: b.currency || "QAR",
-      totalStocks,
-      remainingStocks,
-      totalPieceSold,
-      stockStatus,                    // auto
-      brand: b.brand || null,
-      categories,
-      type: b.type || null,
-      occasions,
-      recipients,
-      colors,
-      packagingOption: b.packagingOption || null,
-      condition: b.condition || "new",
-      featuredImage: featuredImageUrl,
-      images,
-      suggestedProducts,
-      isActive:   toBool(b.isActive, true),
+      currency: b.currency || 'QAR',
+      totalStocks: toNum(b.totalStocks),
+      remainingStocks: toNum(b.remainingStocks),
+      stockStatus: b.stockStatus,
+      brand: normalizeId(b.brand),
+      categories: normalizeIdArray(pickArray(b, 'categories')),
+      type: normalizeId(b.type),
+      occasions: normalizeIdArray(pickArray(b, 'occasions')),
+      recipients: normalizeIdArray(pickArray(b, 'recipients')),
+      colors: normalizeIdArray(pickArray(b, 'colors')),
+      suggestedProducts: normalizeIdArray(pickArray(b, 'suggestedProducts')),
+      packagingOption: normalizeId(b.packagingOption),
+      condition: b.condition || 'new',
+      isActive: toBool(b.isActive, true),
       isFeatured: toBool(b.isFeatured, false),
-      sku: b.sku,
+      dimensions: (() => {
+        const { width, height } = pickDimensionsUpdate(b);
+        const d = {};
+        if (width !== undefined) d.width = width;
+        if (height !== undefined) d.height = height;
+        return d;
+      })(),
+      images: [],
     };
 
-    if (dimensions) payload.dimensions = dimensions;
+    // media
+    const featuredFile = req.files?.featuredImage?.[0];
+    if (featuredFile) {
+      const up = await cloudinary.uploader.upload(featuredFile.path, { folder: 'CRUNCHY COOKIES ASSETS' });
+      doc.featuredImage = up.secure_url;
+    } else if (b.featuredImage) {
+      doc.featuredImage = String(b.featuredImage);
+    }
 
-    const created = await Product.create(payload);
-    res.status(201).json({ success: true, message: "Product created successfully", data: created });
-  } catch (error) {
-    res.status(500).json({ success: false, error: error.message });
+    const galleryFiles = req.files?.images || [];
+    const existingUrls = (() => {
+      try {
+        return JSON.parse(b.existingImageUrls || '[]');
+      } catch (_) {
+        return [];
+      }
+    })().filter(Boolean);
+
+    if (galleryFiles.length) {
+      for (const f of galleryFiles) {
+        const up = await cloudinary.uploader.upload(f.path, { folder: 'CRUNCHY COOKIES ASSETS' });
+        existingUrls.push(up.secure_url);
+      }
+    }
+    doc.images = existingUrls.map((url) => ({ url }));
+
+    // derived
+    const { totalPieceSold, stockStatus } = deriveStock(doc.totalStocks, doc.remainingStocks);
+    doc.totalPieceSold = totalPieceSold;
+    if (!doc.stockStatus) doc.stockStatus = stockStatus;
+
+    const created = await Product.create(doc);
+    return res.status(201).json({ success: true, message: 'Product created successfully', data: created });
+  } catch (err) {
+    console.error(err);
+    return res.status(500).json({ success: false, error: err.message });
   }
 };
 
@@ -281,81 +375,132 @@ const updateProduct = async (req, res) => {
     const { id } = req.params;
     const b = req.body;
     const toUpdate = {};
+    const toUnset = {};
 
     // primitives
-    if ("title" in b) toUpdate.title = b.title;
-    if ("description" in b) toUpdate.description = b.description;
-    if ("price" in b) toUpdate.price = toNum(b.price);
-    if ("discount" in b) toUpdate.discount = toNum(b.discount, 0);
-    if ("currency" in b) toUpdate.currency = b.currency;
-    if ("totalStocks" in b) toUpdate.totalStocks = toNum(b.totalStocks);
-    if ("remainingStocks" in b) toUpdate.remainingStocks = toNum(b.remainingStocks);
-    if ("stockStatus" in b) toUpdate.stockStatus = b.stockStatus; // optional manual override
-    if ("brand" in b) toUpdate.brand = b.brand;
-    if ("type" in b) toUpdate.type = b.type;
-    if ("packagingOption" in b) toUpdate.packagingOption = b.packagingOption;
-    if ("condition" in b) toUpdate.condition = b.condition;
-    if ("isActive" in b) toUpdate.isActive = toBool(b.isActive, true);
-    if ("isFeatured" in b) toUpdate.isFeatured = toBool(b.isFeatured, false);
-    if ("sku" in b) toUpdate.sku = b.sku;
+    if ('title' in b) toUpdate.title = b.title;
+    if ('description' in b) toUpdate.description = b.description;
+    if ('price' in b) toUpdate.price = toNum(b.price);
+    if ('discount' in b) toUpdate.discount = toNum(b.discount, 0);
+    if ('currency' in b) toUpdate.currency = b.currency;
+    if ('totalStocks' in b) toUpdate.totalStocks = toNum(b.totalStocks);
+    if ('remainingStocks' in b) toUpdate.remainingStocks = toNum(b.remainingStocks);
+    if ('stockStatus' in b) toUpdate.stockStatus = b.stockStatus;
+    if ('condition' in b) toUpdate.condition = b.condition;
+    if ('isActive' in b) toUpdate.isActive = toBool(b.isActive, true);
+    if ('isFeatured' in b) toUpdate.isFeatured = toBool(b.isFeatured, false);
+    if ('sku' in b) toUpdate.sku = b.sku;
 
-    // arrays
-    for (const k of ["qualities","categories","occasions","recipients","colors","suggestedProducts"]) {
-      const present = (k in b) || Object.keys(b).some(x => x === `${k}[]` || x.startsWith(`${k}[`));
-      if (present) toUpdate[k] = pickArray(b, k);
+    // single refs with unset support
+    if (b.unset_brand) toUnset.brand = '';
+    else if ('brand' in b) {
+      const v = normalizeId(b.brand);
+      if (v !== undefined) toUpdate.brand = v;
     }
 
-    // dimensions: only set subfields that actually came
-    const { width, height } = pickDimensionsUpdate(b);
-    if (width  !== undefined) toUpdate["dimensions.width"]  = width;
-    if (height !== undefined) toUpdate["dimensions.height"] = height;
+    if (b.unset_type) toUnset.type = '';
+    else if ('type' in b) {
+      const v = normalizeId(b.type);
+      if (v !== undefined) toUpdate.type = v;
+    }
 
-    // files
+    if (b.unset_packagingOption) toUnset.packagingOption = '';
+    else if ('packagingOption' in b) {
+      const v = normalizeId(b.packagingOption);
+      if (v !== undefined) toUpdate.packagingOption = v;
+    }
+
+    if (b.unset_suggestedProducts) toUnset.suggestedProducts = '';
+    else if ('suggestedProducts' in b) {
+      const v = normalizeIdArray(pickArray(b, 'suggestedProducts'));
+      if (v !== undefined) toUpdate.suggestedProducts = v;
+    }
+
+    // arrays
+    const arrKeys = ['qualities', 'categories', 'occasions', 'recipients', 'colors', 'suggestedProducts'];
+    for (const k of arrKeys) {
+      const present = (k in b) || Object.keys(b).some((x) => x === `${k}[]` || x.startsWith(`${k}[`));
+      if (!present) continue;
+
+      if (k === 'qualities') {
+        const arr = pickArray(b, k).map((s) => String(s).trim()).filter(Boolean);
+        toUpdate[k] = arr;
+      } else {
+        const ids = normalizeIdArray(pickArray(b, k));
+        if (ids !== undefined) toUpdate[k] = ids;
+      }
+    }
+
+    // dimensions
+    const { width, height } = pickDimensionsUpdate(b);
+    if (width !== undefined) toUpdate['dimensions.width'] = width;
+    if (height !== undefined) toUpdate['dimensions.height'] = height;
+
+    // media
     const featuredFile = req.files?.featuredImage?.[0];
     const galleryFiles = req.files?.images || [];
 
+    console.log(featuredFile);
+    console.log(galleryFiles);
+
+
     if (featuredFile) {
-      const up = await cloudinary.uploader.upload(featuredFile.path, { folder: "CRUNCHY COOKIES ASSETS" });
+      const up = await cloudinary.uploader.upload(featuredFile.path, { folder: 'CRUNCHY COOKIES ASSETS' });
       toUpdate.featuredImage = up.secure_url;
-    } else if ("featuredImage" in b && b.featuredImage) {
-      toUpdate.featuredImage = b.featuredImage; // URL allowed
+    } else if ('featuredImage' in b && b.featuredImage && String(b.featuredImage).trim()) {
+      toUpdate.featuredImage = String(b.featuredImage).trim();
     }
+
+    // merge gallery: accept new files + existing urls from client
+    const keepUrls = (() => {
+      try {
+        return JSON.parse(b.existingImageUrls || '[]');
+      } catch (_) {
+        return [];
+      }
+    })().filter(Boolean);
 
     if (galleryFiles.length) {
-      const urls = [];
       for (const f of galleryFiles) {
-        const up = await cloudinary.uploader.upload(f.path, { folder: "CRUNCHY COOKIES ASSETS" });
-        urls.push(up.secure_url);
+        const up = await cloudinary.uploader.upload(f.path, { folder: 'CRUNCHY COOKIES ASSETS' });
+        keepUrls.push(up.secure_url);
       }
-      toUpdate.images = urls.map(url => ({ url }));
-    } else if ("images" in b || "images[]" in b || Object.keys(b).some(k => k.startsWith("images["))) {
-      const arr = pickArray(b, "images").map(u => (typeof u === "string" ? { url: u } : u)).filter(Boolean);
-      toUpdate.images = arr;
+    } else if ('images' in b || 'images[]' in b || Object.keys(b).some((k) => k.startsWith('images['))) {
+      // if client sent explicit images list, honor that (replace)
+      const arr = pickArray(b, 'images').map((u) => String(u).trim()).filter(Boolean);
+      toUpdate.images = arr.map((url) => ({ url }));
     }
 
-    // --- derived fields: if totalStocks or remainingStocks came, recompute ---
-    if ("totalStocks" in toUpdate || "remainingStocks" in toUpdate) {
-      // get the current values to combine with provided ones
-      const current = await Product.findById(id).select("totalStocks remainingStocks").lean();
-      const total = ("totalStocks" in toUpdate) ? toUpdate.totalStocks : current?.totalStocks;
-      const remain = ("remainingStocks" in toUpdate) ? toUpdate.remainingStocks : current?.remainingStocks;
+    if (!('images' in toUpdate) && keepUrls.length) {
+      toUpdate.images = keepUrls.map((url) => ({ url }));
+    }
+
+    // recompute derived if stocks changed
+    if ('totalStocks' in toUpdate || 'remainingStocks' in toUpdate) {
+      const current = await Product.findById(id).select('totalStocks remainingStocks').lean();
+      const total = 'totalStocks' in toUpdate ? toUpdate.totalStocks : current?.totalStocks;
+      const remain = 'remainingStocks' in toUpdate ? toUpdate.remainingStocks : current?.remainingStocks;
       const { totalPieceSold, stockStatus } = deriveStock(total, remain);
       toUpdate.totalPieceSold = totalPieceSold;
-      // only override stockStatus if user didn’t explicitly set it
-      if (!("stockStatus" in b)) {
-        toUpdate.stockStatus = stockStatus;
-      }
+      if (!('stockStatus' in b)) toUpdate.stockStatus = stockStatus;
     }
 
-    const updated = await Product.findByIdAndUpdate(
-      id,
-      { $set: toUpdate },
-      { new: true, runValidators: true }
-    );
+    const updateDoc = Object.keys(toUnset).length
+      ? { $set: toUpdate, $unset: toUnset }
+      : { $set: toUpdate };
 
-    return res.status(200).json({ success: true, message: "Product updated successfully", data: updated });
-  } catch (error) {
-    return res.status(500).json({ success: false, error: error.message });
+    console.log(updateDoc);
+    console.log(req.files);
+
+    const updated = await Product.findByIdAndUpdate(id, updateDoc, {
+      new: true,
+      runValidators: true,
+    });
+
+    return res.status(200).json({ success: true, message: 'Product updated successfully', data: updated });
+  } catch (err) {
+    console.error(err);
+    return res.status(500).json({ success: false, error: err.message });
   }
 };
 
@@ -394,6 +539,7 @@ module.exports = {
   getProducts,
   getProductById,
   getFilteredProducts,
+  getProductNames,
   createProduct,
   updateProduct,
   deleteProduct,

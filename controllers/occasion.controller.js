@@ -49,9 +49,10 @@ const createOccasion = async (req, res) => {
         .json({ success: false, message: "Occasion not found" });
     }
 
-    const image = req.file.path;
+    console.log(req.file)
+    console.log(name)
 
-    const cloudinaryResponse = await cloudinary.uploader.upload(image, {
+    const cloudinaryResponse = await cloudinary.uploader.upload(req.file.path, {
       folder: "CRUNCHY COOKIES ASSETS",
     });
 
@@ -81,10 +82,9 @@ const updateOccasion = async (req, res) => {
     const { id } = req.params;
     const { name, isActive } = req.body;
 
-    const image = req.file.path;
     let cloudinaryResponse;
-    if (image) {
-      cloudinaryResponse = await cloudinary.uploader.upload(image, {
+    if (req.file) {
+      cloudinaryResponse = await cloudinary.uploader.upload(req.file.path, {
         folder: "CRUNCHY COOKIES ASSETS",
       });
       cloudinaryResponse = cloudinaryResponse.secure_url;

@@ -83,10 +83,9 @@ const updateSubCategory = async (req, res) => {
     const { id } = req.params;
     const { name, parent, isActive } = req.body;
 
-    const image = req.file.path;
     let cloudinaryResponse;
-    if (image) {
-      cloudinaryResponse = await cloudinary.uploader.upload(image, {
+    if (req.file) {
+      cloudinaryResponse = await cloudinary.uploader.upload(req.file.path, {
         folder: "CRUNCHY COOKIES ASSETS",
       });
       cloudinaryResponse = cloudinaryResponse.secure_url;
@@ -109,9 +108,12 @@ const updateSubCategory = async (req, res) => {
     .replace(/^-|-$/g, "")    // trim leading/trailing -
     : subCategoryData?.slug;
 
+    console.log(name, slug, parent)
+    console.log(cloudinaryResponse, req.file)
+
     const subCategory = await SubCategory.findByIdAndUpdate(
       { _id: id },
-      { name, slug, parent, image: cloudinaryResponse ? cloudinaryResponse.secure_url : subCategoryData.image, isActive }
+      { name, slug, parent, image: cloudinaryResponse ? cloudinaryResponse : subCategoryData.image, isActive }
     );
 
     return res.status(201).json({

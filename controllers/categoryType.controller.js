@@ -49,7 +49,6 @@ const createCategoryType = async (req, res) => {
         .status(200)
         .json({ success: false, message: "Category Type not found" });
     }
-
     const slug = (name ?? "")
     .toLowerCase()
     .trim()

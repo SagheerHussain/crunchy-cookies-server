@@ -21,7 +21,8 @@ const getColors = async (req, res) => {
 const getColorById = async (req, res) => {
   try {
     const { id } = req.params;
-    const color = await Color.findById({ _id: id }).lean();
+    const color = await Color.findById({ _id: id })
+      .lean();
     if (!color) {
       return res
         .status(200)
@@ -41,22 +42,27 @@ const getColorById = async (req, res) => {
 const createColor = async (req, res) => {
   try {
     const { name, mode, value } = req.body;
-
     if (!name || !mode || !value) {
       return res
         .status(200)
         .json({ success: false, message: "Color not found" });
     }
-
     const slug = (name ?? "")
       .toLowerCase()
       .trim()
       .replace(/[^a-z0-9\s-]/g, "") // non-alphanumerics remove
       .replace(/\s+/g, "-")         // spaces → hyphen
       .replace(/-+/g, "-")          // multiple hyphens → single
-      .replace(/^-|-$/g, "")    // trim leading/trailing -
+      .replace(/^-|-$/g, "");    // trim leading/trailing -
 
-    const color = await Color.create({ name, mode, value, slug, isActive: true });
+
+    const color = await Color.create({
+      name,
+      slug,
+      mode,
+      value,
+      isActive: true,
+    });
 
     return res.status(201).json({
       success: true,
@@ -74,7 +80,12 @@ const updateColor = async (req, res) => {
     const { id } = req.params;
     const { name, mode, value, isActive } = req.body;
 
-    const colorData = await Color.findById({ _id: id })
+    const colorData = await Color.findById({ _id: id }).lean();
+    if (!colorData) {
+      return res
+        .status(200)
+        .json({ success: false, message: "Color not found" });
+    }
 
     const slug = name ? (name ?? "")
       .toLowerCase()
@@ -87,7 +98,7 @@ const updateColor = async (req, res) => {
 
     const color = await Color.findByIdAndUpdate(
       { _id: id },
-      { name, mode, value, slug, isActive }
+      { name, slug, mode, value, isActive }
     );
 
     return res.status(201).json({

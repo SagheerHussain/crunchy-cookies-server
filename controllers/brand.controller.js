@@ -43,15 +43,13 @@ const createBrand = async (req, res) => {
   try {
     const { name, countryCode } = req.body;
 
-    const logo = req.file.path;
-
     if (!name) {
       return res
         .status(200)
         .json({ success: false, message: "Brand not found" });
     }
 
-    const cloudinaryResponse = await cloudinary.uploader.upload(logo, {
+    const cloudinaryResponse = await cloudinary.uploader.upload(req.file.path, {
       folder: "CRUNCHY COOKIES ASSETS",
     });
 
@@ -88,10 +86,9 @@ const updateBrand = async (req, res) => {
     const { id } = req.params;
     const { name, countryCode, isActive } = req.body;
 
-    const logo = req.file.path;
     let cloudinaryResponse;
-    if (logo) {
-      cloudinaryResponse = await cloudinary.uploader.upload(logo, {
+    if (req.file) {
+      cloudinaryResponse = await cloudinary.uploader.upload(req.file.path, {
         folder: "CRUNCHY COOKIES ASSETS",
       });
       cloudinaryResponse = cloudinaryResponse.secure_url;
@@ -116,7 +113,7 @@ const updateBrand = async (req, res) => {
 
     const brand = await Brand.findByIdAndUpdate(
       { _id: id },
-      { name, slug, countryCode, logo: logo ? cloudinaryResponse : brandData.logo, isActive }
+      { name, slug, countryCode, logo: cloudinaryResponse ? cloudinaryResponse : brandData.logo, isActive }
     );
 
     return res.status(201).json({

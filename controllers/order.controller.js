@@ -1,36 +1,77 @@
+const mongoose = require("mongoose");
 const Order = require("../models/Order.model");
+const OrderItem = require("../models/OrderItems.model");
+const Coupon = require("../models/Coupon.model");
+const Address = require("../models/Address.model");
+const { pushOrderToSheet } = require('../services/orderToSheet');
+
+const isValidObjectId = (v) => mongoose.Types.ObjectId.isValid(v);
+
+const ORDER_STATUS = [
+  "pending",
+  "confirmed",
+  "shipped",
+  "delivered",
+  "cancelled",
+  "returned",
+];
 
 /* -------------------------------- GET ----------------------------- */
 const getOrders = async (req, res) => {
   try {
-    const orders = await Order.find()
-      .populate("user")
-      .populate("items")
-      .populate("appliedCoupon")
-      .populate("shippingAddress")
-      .lean();
-    if (orders.length === 0) {
-      return res
-        .status(200)
-        .json({ success: false, message: "Orders not found" });
+    const { status, from, to } = req.query;
+
+    const where = {};
+
+    // Status filter (skip if "all" or invalid)
+    if (status && ORDER_STATUS.includes(String(status).toLowerCase())) {
+      where.status = String(status).toLowerCase();
     }
+
+    // Date range filter on placedAt
+    if (from || to) {
+      where.placedAt = {};
+      if (from) where.placedAt.$gte = new Date(from);
+      if (to) {
+        const end = new Date(to);
+        end.setHours(23, 59, 59, 999); // inclusive
+        where.placedAt.$lte = end;
+      }
+    }
+
+    const orders = await Order.find(where)
+      .populate("user", "firstName lastName email")
+      .populate("shippingAddress")
+      .populate({
+        path: "items",
+        populate: { path: "products", model: "Product" },
+      })
+      .lean();
+
     return res.status(200).json({
       success: true,
-      message: "Orders found successfully",
-      data: orders,
+      message: "Orders fetched",
+      data: orders || [],
     });
   } catch (error) {
     return res.status(500).json({ success: false, error: error.message });
   }
 };
+
 const getOrderById = async (req, res) => {
   try {
     const { id } = req.params;
     const order = await Order.findById({ _id: id })
-      .populate("user")
-      .populate("items")
-      .populate("appliedCoupon")
+      .populate("user", "firstname lastname email") // choose fields
+      .populate("appliedCoupon", "code type value")
       .populate("shippingAddress")
+      .populate({
+        path: "items", // 1st level: OrderItem docs
+        populate: {
+          path: "products", // 2nd level: Product docs inside each item
+          model: "Product",
+        },
+      })
       .lean();
     if (!order) {
       return res
@@ -74,60 +115,62 @@ const getOrdersByUser = async (req, res) => {
 const createOrder = async (req, res) => {
   try {
     const {
+      code,
+      user,
+      items, // order-items
+      totalItems,
+      totalAmount,
+      appliedCoupon,
+      shippingAddress, // address
+      deliveryInstructions,
+      cardMessage,
+      cardImage,
+      taxAmount,
+    } = req.body;
+
+    if (!user || !items || !totalItems || !totalAmount || !shippingAddress) {
+      return res.status(403).json({
+        success: false,
+        message: "Please provide complete order details",
+      });
+    }
+
+    console.log("items", req.body);
+
+    const orderItems = await OrderItem.create(items);
+    const address = await Address.create(shippingAddress);
+
+    if (orderItems && address) {
+      const placeOrder = await Order.create({
         code,
         user,
-        status,
-        items,
+        items: orderItems?._id,
         totalItems,
         totalAmount,
         appliedCoupon,
-        shippingAddress,
+        shippingAddress: address?._id,
         deliveryInstructions,
         cardMessage,
         cardImage,
         taxAmount,
-        placedAt,
-    } = req.body;
+      });
 
-    if (
-      !code ||
-      !user ||
-      !items ||
-      !appliedCoupon ||
-      !shippingAddress ||
-      !deliveryInstructions ||
-      !cardMessage ||
-      !cardImage ||
-      !placedAt 
-    ) {
-      return res
-        .status(200)
-        .json({ success: false, message: "Order not found" });
-    }
+      pushOrderToSheet(
+        await Order.findById(placeOrder._id)
+          .populate("user", "firstName lastName email")
+          .populate("shippingAddress")
+          .populate({ path: "items", populate: { path: "products", model: "Product" } })
+          .lean()
+      ).catch(err => console.error("[Sheets:create] ", err?.response?.data || err));
 
-    const order = await Order.create({
-      code,
-      user,
-      items,
-      status,
-      totalItems,
-      totalAmount,
-      appliedCoupon,
-      shippingAddress,
-      deliveryInstructions,
-      cardMessage,
-      cardImage,
-      taxAmount: taxAmount || 0,
-      placedAt,
-    });
-
-    return res.status(201).json({
-      success: true,
-      message: "Order created successfully",
-      data: order,
-    });
+      return res.status(200).json({
+        success: true,
+        message: "Order Placed Successfully",
+        data: placeOrder,
+      });
+    } else throw new Error("Order failed");
   } catch (error) {
-    return res.status(500).json({ success: false, error: error.message });
+    return res.status(500).json({ success: false, message: error.message });
   }
 };
 
@@ -136,50 +179,55 @@ const updateOrder = async (req, res) => {
   try {
     const { id } = req.params;
     const {
-      code,
-      user,
+      // ...existing fields
       status,
-      items,
-      totalItems,
-      totalAmount,
-      appliedCoupon,
-      shippingAddress,
-      deliveryInstructions,
-      cardMessage,
-      cardImage,
-      taxAmount,
       confirmedAt,
-      deliveredAt,
       cancelReason,
+      payment,
+      satisfaction
     } = req.body;
-    const order = await Order.findByIdAndUpdate(
+
+    const order = await Order.findById({ _id: id });
+    let orderItems, address;
+    if (req.body.items) {
+      orderItems = await OrderItem.findById(order?.items?._id);
+    }
+    if (req.body.shippingAddress) {
+      address = await Address.findById(order?.shippingAddress?._id);
+    }
+
+    let deliveredAt = "";
+    if (status === "delivered") {
+      deliveredAt = Date.now();
+    }
+
+    const updated = await Order.findByIdAndUpdate(
       { _id: id },
       {
-        code,
-        user,
+        // ...other fields you already send
+        items: orderItems?._id,
+        shippingAddress: address?._id,
         status,
-        items,
-        totalItems,
-        totalAmount,
-        appliedCoupon,
-        shippingAddress,
-        deliveryInstructions,
-        cardMessage,
-        cardImage,
-        taxAmount,
         confirmedAt,
         deliveredAt,
         cancelReason,
-      }
+        payment,
+        satisfaction
+      },
+      { new: true }
     );
 
-    return res.status(201).json({
-      success: true,
-      message: "Order updated successfully",
-      data: order,
-    });
+    const hydrated = await Order.findById(updated._id)
+      .populate("user", "firstname lastname email")
+      .populate("shippingAddress")
+      .populate({ path: "items", populate: { path: "products", model: "Product" } })
+      .lean();
+
+    pushOrderToSheet(hydrated).catch(err => console.error("[Sheets:update] ", err?.response?.data || err));
+
+    return res.status(200).json({ success: true, message: "Order Updated Successfully", data: updated });
   } catch (error) {
-    return res.status(500).json({ success: false, error: error.message });
+    return res.status(500).json({ success: false, message: error.message });
   }
 };
 

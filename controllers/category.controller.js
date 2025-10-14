@@ -89,7 +89,7 @@ const updateCategory = async (req, res) => {
 
     let cloudinaryResponse = "";
     if (req.file) {
-      cloudinaryResponse = await cloudinary.uploader.upload(image, {
+      cloudinaryResponse = await cloudinary.uploader.upload(req.file.path, {
         folder: "CRUNCHY COOKIES ASSETS",
       });
       cloudinaryResponse = cloudinaryResponse.secure_url;
