@@ -3,6 +3,7 @@ const path = require('path');
 require('dotenv').config({ path: path.resolve(__dirname, '.env') });
 const cors = require("cors");
 const axios = require("axios");
+const http = require("http");
 
 const { dbConnection } = require("./config/config.js");
 
@@ -85,50 +86,6 @@ app.use("/api/v1/wishlist", wishlistRoutes);
 app.use("/api/v1/analytics", analyticsRoutes);
 
 app.use("/api", require("./routes/ping_routes"));
-
-app.get('/test/sheet', async (req, res) => {
-  try {
-    const auth = new google.auth.GoogleAuth({
-      keyFile: 'credentials.json',
-      scopes: ['https://www.googleapis.com/auth/spreadsheets'],
-    });
-
-    const client = await auth.getClient();
-
-    const googleSheets = google.sheets({ version: "v4", auth: client });
-
-    const spreadsheetId = "1GJ5Gfe_37oO7UIzJ0yFaEiafX-BdrSd65o9emijLKzQ";
-
-    const metaData = await googleSheets.spreadsheets.get({
-      auth,
-      spreadsheetId
-    })
-
-    const getRows = await googleSheets.spreadsheets.values.get({
-      auth,
-      spreadsheetId,
-      range: "Orders"
-    })
-
-    await googleSheets.spreadsheets.values.append({
-      auth,
-      spreadsheetId,
-      range: "Orders!A:B",
-      valueInputOption: "USER_ENTERED",
-      resource: {
-        values: [
-          ["SA-2025-000124", "2025-10-13", "", "2025-10-13", "pending", "pending", "Muhammad Shayan", "03162196345", "03162184642", "QAR 1000", "10%", "QAR 250", "QAR 0", "NEWYEAR10", "Please Deliver as soon as possible", "Happy Wishes to my lovely sister", "https://crunchy-cookies.skynetsilicon.com/images/preview-card.png"],
-          ["SA-2025-000125", "2025-10-14", "", "2025-10-14", "pending", "pending", "Muhammad Shayan", "03162196345", "03162184642", "QAR 1000", "10%", "QAR 250", "QAR 0", "NEWYEAR10", "Please Deliver as soon as possible", "Happy Wishes to my lovely sister", "https://crunchy-cookies.skynetsilicon.com/images/preview-card.png"],
-        ]
-      }
-    })
-
-    return res.send(getRows.data)
-  } catch (e) {
-    console.error('TEST SHEET ERROR:', e.response?.data || e);
-    res.status(500).send(e.response?.data?.error?.message || e.message);
-  }
-});
 
 if (require.main === module && !process.env.VERCEL) {
   const server = http.createServer(app);
