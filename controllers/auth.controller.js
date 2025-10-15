@@ -1,5 +1,6 @@
 // controllers/auth.controller.js
-const User = require("../models/User.model");
+const User = require("../models/user.model");
+const Role = require("../models/role.model");
 const jwt = require("jsonwebtoken");
 const bcrypt = require("bcrypt");
 
