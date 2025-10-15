@@ -2,6 +2,7 @@ const mongoose = require('mongoose');
 
 const ORDER_STATUS = ['pending', 'confirmed', 'shipped', 'delivered', 'cancelled', 'returned'];
 const PAYMENT_STATUS = ['pending', 'paid', 'failed', 'refunded', 'partial'];
+const CUSTOMER_SATISFACTION = ['poor', 'extremely satisfied', 'satisfied', 'very poor']
 
 const orderSchema = new mongoose.Schema(
   {
@@ -22,10 +23,9 @@ const orderSchema = new mongoose.Schema(
     confirmedAt: { type: Date },
     deliveredAt: { type: Date },
     cancelReason: { type: String, default: null },
-    satisfaction: { type: String, default: null },
+    satisfaction: { type: String, default: null, enum: CUSTOMER_SATISFACTION },
   },
   { timestamps: true }
 );
 
-const Order = mongoose.model('Order', orderSchema);
-module.exports = Order;
+module.exports = mongoose.model('Order', orderSchema);

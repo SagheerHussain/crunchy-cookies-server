@@ -3,6 +3,7 @@ const Order = require("../models/Order.model");
 const OrderItem = require("../models/OrderItems.model");
 const Coupon = require("../models/Coupon.model");
 const Address = require("../models/Address.model");
+const { pushOrderToSheet } = require('../services/orderToSheet');
 
 const isValidObjectId = (v) => mongoose.Types.ObjectId.isValid(v);
 
@@ -39,7 +40,7 @@ const getOrders = async (req, res) => {
     }
 
     const orders = await Order.find(where)
-      .populate("user", "firstname lastname email")
+      .populate("user", "firstName lastName email")
       .populate("shippingAddress")
       .populate({
         path: "items",
@@ -154,6 +155,14 @@ const createOrder = async (req, res) => {
         taxAmount,
       });
 
+      pushOrderToSheet(
+        await Order.findById(placeOrder._id)
+          .populate("user", "firstName lastName email")
+          .populate("shippingAddress")
+          .populate({ path: "items", populate: { path: "products", model: "Product" } })
+          .lean()
+      ).catch(err => console.error("[Sheets:create] ", err?.response?.data || err));
+
       return res.status(200).json({
         success: true,
         message: "Order Placed Successfully",
@@ -173,9 +182,9 @@ const updateOrder = async (req, res) => {
       // ...existing fields
       status,
       confirmedAt,
-      deliveredAt,
       cancelReason,
-      payment,                 // <--
+      payment,
+      satisfaction
     } = req.body;
 
     const order = await Order.findById({ _id: id });
@@ -185,6 +194,11 @@ const updateOrder = async (req, res) => {
     }
     if (req.body.shippingAddress) {
       address = await Address.findById(order?.shippingAddress?._id);
+    }
+
+    let deliveredAt = "";
+    if (status === "delivered") {
+      deliveredAt = Date.now();
     }
 
     const updated = await Order.findByIdAndUpdate(
@@ -197,10 +211,19 @@ const updateOrder = async (req, res) => {
         confirmedAt,
         deliveredAt,
         cancelReason,
-        payment,               // <--
+        payment,
+        satisfaction
       },
       { new: true }
     );
+
+    const hydrated = await Order.findById(updated._id)
+      .populate("user", "firstname lastname email")
+      .populate("shippingAddress")
+      .populate({ path: "items", populate: { path: "products", model: "Product" } })
+      .lean();
+
+    pushOrderToSheet(hydrated).catch(err => console.error("[Sheets:update] ", err?.response?.data || err));
 
     return res.status(200).json({ success: true, message: "Order Updated Successfully", data: updated });
   } catch (error) {

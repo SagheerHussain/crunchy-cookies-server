@@ -1,6 +1,9 @@
 const express = require("express");
-require("dotenv").config();
+const path = require('path');
+require('dotenv').config({ path: path.resolve(__dirname, '.env') });
 const cors = require("cors");
+const axios = require("axios");
+const http = require("http");
 
 const { dbConnection } = require("./config/config.js");
 
@@ -31,11 +34,14 @@ const userRoutes = require("./routes/user.route.js");
 const wishlistRoutes = require("./routes/wishlist.route.js");
 const analyticsRoutes = require("./routes/analytics.route.js");
 
+const { ensureHeaders, appendRow } = require('./utils/googleSheets.js');
+const { google } = require("googleapis");
+
 const app = express();
 const PORT = process.env.PORT || 5000;
 
 /* CORS */
-const allowedOrigins = ["http://localhost:3000"];
+const allowedOrigins = ["http://localhost:3000", "http://localhost:5173"];
 app.use(
   cors({
     origin: (origin, cb) => (!origin || allowedOrigins.includes(origin) ? cb(null, true) : cb(new Error("Not allowed by CORS"))),
@@ -79,5 +85,37 @@ app.use("/api/v1/user", userRoutes);
 app.use("/api/v1/wishlist", wishlistRoutes);
 app.use("/api/v1/analytics", analyticsRoutes);
 
+app.use("/api", require("./routes/ping_routes"));
+
+if (require.main === module && !process.env.VERCEL) {
+  const server = http.createServer(app);
+
+  server.listen(PORT, "0.0.0.0", () => {
+    console.log(`Server is running on port ${PORT}`);
+
+    // Prefer env, else derive from Render's external URL, else localhost:
+    const baseFromRender =
+      (process.env.RENDER_EXTERNAL_URL || "").replace(/\/$/, "");
+    const PING_URL =
+      process.env.PING_URL ||
+      (baseFromRender ? `${baseFromRender}/api/ping` : `http://localhost:${PORT}/api/ping`);
+
+    // 10 minutes (override via KEEPALIVE_INTERVAL_MS if you want)
+    const intervalMs = Number(process.env.KEEPALIVE_INTERVAL_MS || 10 * 60 * 1000);
+
+    console.log(`[AutoPing] Using ${PING_URL} every ${intervalMs / 60000} min`);
+
+    setInterval(async () => {
+      try {
+        await axios.get(PING_URL, { timeout: 10_000 });
+        console.log(`[AutoPing] ok @ ${new Date().toISOString()}`);
+      } catch (err) {
+        console.error(`[AutoPing] failed: ${err?.message || err}`);
+      }
+    }, intervalMs);
+  });
+}
+
+
 /* Start */
-app.listen(PORT, () => console.log(`Server is running on port ${PORT}`));
+// app.listen(PORT, () => console.log(`Server is running on port ${PORT}`));
