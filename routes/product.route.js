@@ -16,6 +16,12 @@ const {
 
 /* -------------------------------- GET ----------------------------- */
 router.get("/lists", getProducts);
+router.get("/lists/inFlowerInVases", getProductsInFlowerInVases);
+router.get("/lists/inChocolatesOrHandBouquets", getProductsInChocolatesOrHandBouquets);
+router.get("/lists/inPerfumes", getProductsInPerfumes);
+router.get("/lists/inPreservedFlowers", getProductsInPreservedFlowers);
+router.get("/lists/featured", getFeaturedProducts);
+router.get("/lists/topSold", getTopSoldProducts);
 router.get("/lists/:id", getProductById);
 router.get("/lists/filter", getFilteredProducts);
 router.get("/names", getProductNames);
