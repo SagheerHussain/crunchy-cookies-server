@@ -1,6 +1,6 @@
 const express = require("express");
-const path = require('path');
-require('dotenv').config({ path: path.resolve(__dirname, '.env') });
+const path = require("path");
+require("dotenv").config({ path: path.resolve(__dirname, ".env") });
 const cors = require("cors");
 const axios = require("axios");
 const http = require("http");
@@ -34,17 +34,25 @@ const userRoutes = require("./routes/user.route.js");
 const wishlistRoutes = require("./routes/wishlist.route.js");
 const analyticsRoutes = require("./routes/analytics.route.js");
 
-const { ensureHeaders, appendRow } = require('./utils/googleSheets.js');
+const { ensureHeaders, appendRow } = require("./utils/googleSheets.js");
 const { google } = require("googleapis");
 
 const app = express();
 const PORT = process.env.PORT || 5000;
 
 /* CORS */
-const allowedOrigins = ["http://localhost:3000", "http://localhost:5173", "https://crunchy-cookies.skynetsilicon.com"];
+const allowedOrigins = [
+  "http://localhost:3000",
+  "http://localhost:5173",
+  "https://crunchy-cookies.skynetsilicon.com",
+  "https://crunchy-cookies-dashboard.vercel.app",
+];
 app.use(
   cors({
-    origin: (origin, cb) => (!origin || allowedOrigins.includes(origin) ? cb(null, true) : cb(new Error("Not allowed by CORS"))),
+    origin: (origin, cb) =>
+      !origin || allowedOrigins.includes(origin)
+        ? cb(null, true)
+        : cb(new Error("Not allowed by CORS")),
     credentials: true,
   })
 );
@@ -57,7 +65,9 @@ app.use(express.urlencoded({ extended: true }));
 dbConnection();
 
 /* Routes */
-app.get("/", (_req, res) => res.status(200).json({ message: "Welcome Back Crunchy Cookies Server" }));
+app.get("/", (_req, res) =>
+  res.status(200).json({ message: "Welcome Back Crunchy Cookies Server" })
+);
 app.use("/api/v1/auth", authRoutes);
 app.use("/api/v1/address", addressRoutes);
 app.use("/api/v1/brand", brandRoutes);
@@ -94,14 +104,20 @@ if (require.main === module && !process.env.VERCEL) {
     console.log(`Server is running on port ${PORT}`);
 
     // Prefer env, else derive from Render's external URL, else localhost:
-    const baseFromRender =
-      (process.env.RENDER_EXTERNAL_URL || "").replace(/\/$/, "");
+    const baseFromRender = (process.env.RENDER_EXTERNAL_URL || "").replace(
+      /\/$/,
+      ""
+    );
     const PING_URL =
       process.env.PING_URL ||
-      (baseFromRender ? `${baseFromRender}/api/ping` : `http://localhost:${PORT}/api/ping`);
+      (baseFromRender
+        ? `${baseFromRender}/api/ping`
+        : `http://localhost:${PORT}/api/ping`);
 
     // 10 minutes (override via KEEPALIVE_INTERVAL_MS if you want)
-    const intervalMs = Number(process.env.KEEPALIVE_INTERVAL_MS || 10 * 60 * 1000);
+    const intervalMs = Number(
+      process.env.KEEPALIVE_INTERVAL_MS || 10 * 60 * 1000
+    );
 
     console.log(`[AutoPing] Using ${PING_URL} every ${intervalMs / 60000} min`);
 
@@ -115,7 +131,6 @@ if (require.main === module && !process.env.VERCEL) {
     }, intervalMs);
   });
 }
-
 
 /* Start */
 // app.listen(PORT, () => console.log(`Server is running on port ${PORT}`));
