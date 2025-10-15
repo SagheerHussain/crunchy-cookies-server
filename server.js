@@ -41,7 +41,7 @@ const app = express();
 const PORT = process.env.PORT || 5000;
 
 /* CORS */
-const allowedOrigins = ["http://localhost:3000", "http://localhost:5173"];
+const allowedOrigins = ["http://localhost:3000", "http://localhost:5173", "https://crunchy-cookies.skynetsilicon.com"];
 app.use(
   cors({
     origin: (origin, cb) => (!origin || allowedOrigins.includes(origin) ? cb(null, true) : cb(new Error("Not allowed by CORS"))),
