@@ -93,16 +93,17 @@ const createRecipient = async (req, res) => {
 const updateRecipient = async (req, res) => {
   try {
     const { id } = req.params;
+    console.log(req.body)
     const {
       name,
       ar_name,
       isActive,
     } = req.body;
 
-    const image = req.file.path;
+
     let cloudinaryResponse;
-    if (image) {
-      cloudinaryResponse = await cloudinary.uploader.upload(image, {
+    if (req.file) {
+      cloudinaryResponse = await cloudinary.uploader.upload(req.file.path, {
         folder: "CRUNCHY COOKIES ASSETS",
       });
       cloudinaryResponse = cloudinaryResponse.secure_url;
