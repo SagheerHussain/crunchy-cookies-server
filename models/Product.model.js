@@ -7,8 +7,11 @@ const CURRENCIES = ['QAR', 'USD'];
 const productSchema = new mongoose.Schema(
   {
     title: { type: String, required: true, trim: true },
+    ar_title: { type: String, required: true, trim: true },
     description: { type: String },
+    ar_description: { type: String },
     qualities: [{ type: String }],
+    ar_qualities: [{ type: String }],
     price: { type: Number, required: true },
     discount: { type: Number, default: 0 },
     currency: { type: String, enum: CURRENCIES, default: "QAR" },

@@ -41,16 +41,14 @@ const getOccasionById = async (req, res) => {
 /* -------------------------------- POST ----------------------------- */
 const createOccasion = async (req, res) => {
   try {
-    const { name } = req.body;
+    const { name, ar_name } = req.body;
 
-    if (!name) {
+    if (!name || !ar_name) {
       return res
         .status(200)
         .json({ success: false, message: "Occasion not found" });
     }
 
-    console.log(req.file)
-    console.log(name)
 
     const cloudinaryResponse = await cloudinary.uploader.upload(req.file.path, {
       folder: "CRUNCHY COOKIES ASSETS",
@@ -64,7 +62,7 @@ const createOccasion = async (req, res) => {
     .replace(/-+/g, "-")          // multiple hyphens → single
     .replace(/^-|-$/g, "")    // trim leading/trailing -
 
-    const occasion = await Occasion.create({ name, slug, image: cloudinaryResponse.secure_url, isActive: true });
+    const occasion = await Occasion.create({ name, ar_name, slug, image: cloudinaryResponse.secure_url, isActive: true });
 
     return res.status(201).json({
       success: true,
@@ -80,7 +78,7 @@ const createOccasion = async (req, res) => {
 const updateOccasion = async (req, res) => {
   try {
     const { id } = req.params;
-    const { name, isActive } = req.body;
+    const { name, ar_name, isActive } = req.body;
 
     let cloudinaryResponse;
     if (req.file) {
@@ -108,7 +106,7 @@ const updateOccasion = async (req, res) => {
 
     const occasion = await Occasion.findByIdAndUpdate(
       { _id: id },
-      { name, slug, image: cloudinaryResponse ? cloudinaryResponse : occasionData.image, isActive }
+      { name, ar_name, slug, image: cloudinaryResponse ? cloudinaryResponse : occasionData.image, isActive }
     );
 
     return res.status(201).json({

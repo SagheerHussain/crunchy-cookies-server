@@ -41,9 +41,9 @@ const getCategoryById = async (req, res) => {
 /* -------------------------------- POST ----------------------------- */
 const createCategory = async (req, res) => {
   try {
-    const { name } = req.body;
+    const { name, ar_name } = req.body;
 
-    if (!name) {
+    if (!name || !ar_name) {
       return res
         .status(200)
         .json({ success: false, message: "Category not found" });
@@ -69,7 +69,7 @@ const createCategory = async (req, res) => {
 
     console.log(name, req.file, slug);
 
-    const category = await Category.create({ name, slug, image: cloudinaryResponse, isActive: true });
+    const category = await Category.create({ name, ar_name, slug, image: cloudinaryResponse, isActive: true });
 
     return res.status(201).json({
       success: true,
@@ -85,7 +85,7 @@ const createCategory = async (req, res) => {
 const updateCategory = async (req, res) => {
   try {
     const { id } = req.params;
-    const { name, isActive } = req.body;
+    const { name, ar_name, isActive } = req.body;
 
     let cloudinaryResponse = "";
     if (req.file) {
@@ -114,7 +114,7 @@ const updateCategory = async (req, res) => {
 
     const category = await Category.findByIdAndUpdate(
       { _id: id },
-      { name, slug, image: cloudinaryResponse ? cloudinaryResponse : categoryData.image, isActive }
+      { name, ar_name, slug, image: cloudinaryResponse ? cloudinaryResponse : categoryData.image, isActive }
     );
 
     return res.status(201).json({

@@ -123,7 +123,9 @@ const createOrder = async (req, res) => {
       appliedCoupon,
       shippingAddress, // address
       deliveryInstructions,
+      ar_deliveryInstructions,
       cardMessage,
+      ar_cardMessage,
       cardImage,
       taxAmount,
     } = req.body;
@@ -150,7 +152,9 @@ const createOrder = async (req, res) => {
         appliedCoupon,
         shippingAddress: address?._id,
         deliveryInstructions,
+        ar_deliveryInstructions,
         cardMessage,
+        ar_cardMessage,
         cardImage,
         taxAmount,
       });

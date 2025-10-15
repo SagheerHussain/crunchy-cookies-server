@@ -67,6 +67,7 @@ const createOrderHistory = async (req, res) => {
     const {
       order,
       notes,
+      ar_notes
     } = req.body;
 
     if (!order) {
@@ -79,6 +80,7 @@ const createOrderHistory = async (req, res) => {
       order,
       at: Date.now(),
       notes,
+      ar_notes
     });
 
     return res.status(201).json({
@@ -98,6 +100,7 @@ const updateOrderHistory = async (req, res) => {
     const {
       order,
       notes,
+      ar_notes
     } = req.body;
 
     const orderHistory = await OrderHistory.findByIdAndUpdate(
@@ -105,6 +108,7 @@ const updateOrderHistory = async (req, res) => {
       {
         order,
         notes,
+        ar_notes,
         at: Date.now(),
       }
     );

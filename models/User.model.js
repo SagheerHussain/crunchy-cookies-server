@@ -5,7 +5,9 @@ const GENDER = ["male", "female", "other"];
 const userSchema = new mongoose.Schema(
   {
     firstName: { type: String, trim: true },
+    ar_firstName: { type: String, trim: true },
     lastName: { type: String, trim: true },
+    ar_lastName: { type: String, trim: true },
     email: {
       type: String,
       required: true,

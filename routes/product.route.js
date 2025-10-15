@@ -12,6 +12,13 @@ const {
   updateProduct,
   deleteProduct,
   bulkDelete,
+  getProductsInFlowerInVases,
+  getTopSoldProducts,
+  getProductsInChocolatesOrHandBouquets,
+  getProductsForFriendsOccasion,
+  getFeaturedProducts,
+  getProductsInPerfumes,
+  getProductsInPreservedFlowers,
 } = require("../controllers/products.controller");
 
 /* -------------------------------- GET ----------------------------- */
@@ -20,8 +27,9 @@ router.get("/lists/inFlowerInVases", getProductsInFlowerInVases);
 router.get("/lists/inChocolatesOrHandBouquets", getProductsInChocolatesOrHandBouquets);
 router.get("/lists/inPerfumes", getProductsInPerfumes);
 router.get("/lists/inPreservedFlowers", getProductsInPreservedFlowers);
-router.get("/lists/featured", getFeaturedProducts);
-router.get("/lists/topSold", getTopSoldProducts);
+router.get("/lists/inFriendsOccasion", getProductsForFriendsOccasion);
+router.get("/lists/inFeatured", getFeaturedProducts);
+router.get("/lists/inTopSold", getTopSoldProducts);
 router.get("/lists/:id", getProductById);
 router.get("/lists/filter", getFilteredProducts);
 router.get("/names", getProductNames);

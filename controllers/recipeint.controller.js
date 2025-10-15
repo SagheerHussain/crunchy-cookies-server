@@ -45,10 +45,12 @@ const createRecipient = async (req, res) => {
   try {
     const {
       name,
+      ar_name,
     } = req.body;
 
     if (
-      !name
+      !name,
+      !ar_name
     ) {
       return res
         .status(200)
@@ -71,6 +73,7 @@ const createRecipient = async (req, res) => {
     
     const createRecipient = await Recipient.create({
       name,
+      ar_name,
       slug,
       image: cloudinaryResponse.secure_url,
       isActive: true,
@@ -92,6 +95,7 @@ const updateRecipient = async (req, res) => {
     const { id } = req.params;
     const {
       name,
+      ar_name,
       isActive,
     } = req.body;
 
@@ -125,6 +129,7 @@ const updateRecipient = async (req, res) => {
       { _id: id },
       {
         name,
+        ar_name,
         slug,
         image: cloudinaryResponse ? cloudinaryResponse.secure_url : recipientData.image,
         isActive,

@@ -45,7 +45,9 @@ const createPackaging = async (req, res) => {
   try {
     const {
       name,
+      ar_name,
       materials,
+      ar_materials,
     } = req.body;
 
     if (!name || !materials) {
@@ -66,8 +68,10 @@ const createPackaging = async (req, res) => {
 
     const packaging = await Packaging.create({
       name,
+      ar_name,
       slug,
       materials,
+      ar_materials,
       isActive: true,
     });
 
@@ -87,7 +91,9 @@ const updatePackaging = async (req, res) => {
     const { id } = req.params;
     const {
       name,
+      ar_name,
       materials,
+      ar_materials,
       isActive,
     } = req.body;
 
@@ -107,8 +113,10 @@ const updatePackaging = async (req, res) => {
       { _id: id },
       {
         name,
+        ar_name,
         slug,
         materials,
+        ar_materials,
         isActive,
       }
     );

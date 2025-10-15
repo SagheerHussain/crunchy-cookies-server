@@ -40,12 +40,12 @@ const getUserById = async (req, res) => {
 /* -------------------------------- POST ----------------------------- */
 const createUser = async (req, res) => {
   try {
-    const { firstName, lastName, email, phone, password, gender, role, dob } =
+    const { firstName, ar_firstName, lastName, ar_lastName, email, phone, password, gender, role, dob } =
       req.body;
 
     console.log(req.body);
 
-    if (!firstName || !lastName || !email || !phone || !password) {
+    if (!firstName || !ar_firstName || !lastName || !ar_lastName || !email || !phone || !password) {
       return res
         .status(200)
         .json({ success: false, message: "All fields are required" });
@@ -53,7 +53,9 @@ const createUser = async (req, res) => {
 
     const createUser = await User.create({
       firstName,
+      ar_firstName,
       lastName,
+      ar_lastName,
       email,
       phone,
       password,
@@ -78,7 +80,9 @@ const updateUser = async (req, res) => {
     const { id } = req.params;
     const {
       firstName,
+      ar_firstName,
       lastName,
+      ar_lastName,
       email,
       phone,
       password,
@@ -94,7 +98,9 @@ const updateUser = async (req, res) => {
       { _id: id },
       {
         firstName,
+        ar_firstName,
         lastName,
+        ar_lastName,
         email,
         phone,
         password,

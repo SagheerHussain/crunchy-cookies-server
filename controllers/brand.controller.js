@@ -41,9 +41,9 @@ const getBrandById = async (req, res) => {
 /* -------------------------------- POST ----------------------------- */
 const createBrand = async (req, res) => {
   try {
-    const { name, countryCode } = req.body;
+    const { name, ar_name, countryCode } = req.body;
 
-    if (!name) {
+    if (!name || !ar_name) {
       return res
         .status(200)
         .json({ success: false, message: "Brand not found" });
@@ -64,6 +64,7 @@ const createBrand = async (req, res) => {
 
     const brand = await Brand.create({
       name,
+      ar_name,
       slug,
       logo: cloudinaryResponse.secure_url,
       countryCode,
@@ -84,7 +85,7 @@ const createBrand = async (req, res) => {
 const updateBrand = async (req, res) => {
   try {
     const { id } = req.params;
-    const { name, countryCode, isActive } = req.body;
+    const { name, ar_name, countryCode, isActive } = req.body;
 
     let cloudinaryResponse;
     if (req.file) {
@@ -113,7 +114,7 @@ const updateBrand = async (req, res) => {
 
     const brand = await Brand.findByIdAndUpdate(
       { _id: id },
-      { name, slug, countryCode, logo: cloudinaryResponse ? cloudinaryResponse : brandData.logo, isActive }
+      { name, ar_name, slug, countryCode, logo: cloudinaryResponse ? cloudinaryResponse : brandData.logo, isActive }
     );
 
     return res.status(201).json({

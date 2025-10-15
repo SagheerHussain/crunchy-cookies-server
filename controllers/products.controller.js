@@ -6,6 +6,7 @@ const mongoose = require("mongoose");
 // ⬇️ add these two lines (assuming file names match your models)
 const SubCategory = require("../models/SubCategory.model");
 const Occasion = require("../models/Occasion.model");
+const Recipient = require("../models/Recipient.model");
 
 const AVAILABILITY = ["in_stock", "low_stock", "out_of_stock"];
 
@@ -57,25 +58,26 @@ const normalizeIdArray = (arr) => {
 const nameOrTitleFilter = (names = []) => ({
   $or: names.map((n) => ({
     $or: [
-      { name: { $regex: `^${String(n).trim()}$`, $options: "i" } },
-      { title: { $regex: `^${String(n).trim()}$`, $options: "i" } },
+      { name: { $regex: `^${String(n).trim()}$`, $options: 'i' } },
+      { title: { $regex: `^${String(n).trim()}$`, $options: 'i' } },
     ],
   })),
 });
 
 // fetch SubCategory ids by names
 async function subCategoryIdsByNames(names = []) {
-  const docs = await SubCategory.find(nameOrTitleFilter(names))
-    .select("_id")
-    .lean();
+  const docs = await SubCategory.find(nameOrTitleFilter(names)).select('_id').lean();
   return docs.map((d) => d._id);
 }
 
 // fetch Occasion id(s) by a single name (or array)
 async function occasionIdsByNames(names = []) {
-  const docs = await Occasion.find(nameOrTitleFilter(names))
-    .select("_id")
-    .lean();
+  const docs = await Occasion.find(nameOrTitleFilter(names)).select('_id').lean();
+  return docs.map((d) => d._id);
+}
+
+async function recipientIdsByNames(names = []) {
+  const docs = await Recipient.find(nameOrTitleFilter(names)).select('_id').lean();
   return docs.map((d) => d._id);
 }
 
@@ -381,10 +383,11 @@ const getProductNames = async (req, res) => {
   }
 };
 
+// Returns all products whose subcategory is "Flower in vases"
 const getProductsInFlowerInVases = async (req, res) => {
   try {
     const { page, limit, skip } = getPagination(req.query);
-    const catIds = await subCategoryIdsByNames(['Flower in vases']);
+    const catIds = await subCategoryIdsByNames(['flowers in vases']);
 
     const [products, total] = await Promise.all([
       Product.find({ categories: { $in: catIds } })
@@ -476,9 +479,9 @@ const getProductsInChocolatesOrHandBouquets = async (req, res) => {
 const getProductsForFriendsOccasion = async (req, res) => {
   try {
     const { page, limit, skip } = getPagination(req.query);
-    const occIds = await occasionIdsByNames(['friends']);
+    const recIds = await recipientIdsByNames(['friends']);
 
-    const query = { occasions: { $in: occIds } };
+    const query = { recipients: { $in: recIds } };
 
     const [products, total] = await Promise.all([
       Product.find(query)
@@ -618,9 +621,12 @@ const createProduct = async (req, res) => {
 
     const doc = {
       title: b.title,
+      ar_title: b.ar_title,
       sku: b.sku,
       description: b.description,
+      ar_description: b.ar_description,
       qualities: pickArray(b, "qualities"),
+      ar_qualities: pickArray(b, "ar_qualities"),
       price: toNum(b.price),
       discount: toNum(b.discount, 0),
       currency: b.currency || "QAR",
@@ -710,7 +716,9 @@ const updateProduct = async (req, res) => {
 
     // primitives
     if ("title" in b) toUpdate.title = b.title;
+    if ("ar_title" in b) toUpdate.ar_title = b.ar_title;
     if ("description" in b) toUpdate.description = b.description;
+    if ("ar_description" in b) toUpdate.ar_description = b.ar_description;
     if ("price" in b) toUpdate.price = toNum(b.price);
     if ("discount" in b) toUpdate.discount = toNum(b.discount, 0);
     if ("currency" in b) toUpdate.currency = b.currency;
@@ -751,6 +759,7 @@ const updateProduct = async (req, res) => {
     // arrays
     const arrKeys = [
       "qualities",
+      "ar_qualities",
       "categories",
       "occasions",
       "recipients",
@@ -764,6 +773,16 @@ const updateProduct = async (req, res) => {
       if (!present) continue;
 
       if (k === "qualities") {
+        const arr = pickArray(b, k)
+          .map((s) => String(s).trim())
+          .filter(Boolean);
+        toUpdate[k] = arr;
+      } else {
+        const ids = normalizeIdArray(pickArray(b, k));
+        if (ids !== undefined) toUpdate[k] = ids;
+      }
+
+      if (k === "ar_qualities") {
         const arr = pickArray(b, k)
           .map((s) => String(s).trim())
           .filter(Boolean);

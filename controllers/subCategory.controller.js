@@ -41,9 +41,9 @@ const getSubCategoryById = async (req, res) => {
 /* -------------------------------- POST ----------------------------- */
 const createSubCategory = async (req, res) => {
   try {
-    const { name, parent } = req.body;
+    const { name, ar_name, parent } = req.body;
 
-    if (!name || !parent) {
+    if (!name || !ar_name || !parent) {
       return res
         .status(200)
         .json({ success: false, message: "SubCategory not found" });
@@ -65,7 +65,7 @@ const createSubCategory = async (req, res) => {
 
     console.log(name, image, slug,parent)
 
-    const subCategory = await SubCategory.create({ name, slug, parent, image: cloudinaryResponse.secure_url, isActive: true });
+    const subCategory = await SubCategory.create({ name, ar_name, slug, parent, image: cloudinaryResponse.secure_url, isActive: true });
 
     return res.status(201).json({
       success: true,
@@ -81,7 +81,7 @@ const createSubCategory = async (req, res) => {
 const updateSubCategory = async (req, res) => {
   try {
     const { id } = req.params;
-    const { name, parent, isActive } = req.body;
+    const { name, ar_name, parent, isActive } = req.body;
 
     let cloudinaryResponse;
     if (req.file) {
@@ -113,7 +113,7 @@ const updateSubCategory = async (req, res) => {
 
     const subCategory = await SubCategory.findByIdAndUpdate(
       { _id: id },
-      { name, slug, parent, image: cloudinaryResponse ? cloudinaryResponse : subCategoryData.image, isActive }
+      { name, ar_name, slug, parent, image: cloudinaryResponse ? cloudinaryResponse : subCategoryData.image, isActive }
     );
 
     return res.status(201).json({

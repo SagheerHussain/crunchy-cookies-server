@@ -78,6 +78,7 @@ const createOrderCancel = async (req, res) => {
       payment,
       paymentStatus,
       refundReason,
+      ar_refundReason,
     } = req.body;
 
     if (
@@ -87,7 +88,8 @@ const createOrderCancel = async (req, res) => {
       !refundStatus ||
       !payment ||
       !paymentStatus ||
-      !refundReason
+      !refundReason ||
+      !ar_refundReason
     ) {
       return res
         .status(200)
@@ -102,6 +104,7 @@ const createOrderCancel = async (req, res) => {
       payment,
       paymentStatus,
       refundReason,
+      ar_refundReason,
     });
 
     return res.status(201).json({
@@ -126,6 +129,7 @@ const updateOrderCancel = async (req, res) => {
       payment,
       paymentStatus,
       refundReason,
+      ar_refundReason,
     } = req.body;
 
     const orderCancel = await OrderCancel.findByIdAndUpdate(
@@ -138,6 +142,7 @@ const updateOrderCancel = async (req, res) => {
         payment,
         paymentStatus,
         refundReason,
+        ar_refundReason,
       }
     );
 
