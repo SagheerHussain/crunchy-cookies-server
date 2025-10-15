@@ -420,18 +420,32 @@ const getProductsInFlowerInVases = async (req, res) => {
 // Returns the (or top N) most sold product(s). Optional ?limit=n (default 1)
 const getTopSoldProducts = async (req, res) => {
   try {
-    const lim = Number.isFinite(Number(req.query.limit)) ? Math.max(1, Number(req.query.limit)) : 1;
+    const { page, limit, skip } = getPagination(req.query);
 
-    const products = await Product.find({})
-      .sort({ totalPieceSold: -1, createdAt: -1 })
-      .limit(lim)
-      .populate('brand categories type occasions recipients colors packagingOption suggestedProducts')
-      .lean();
+    const [products, total] = await Promise.all([
+      Product.find({})
+        .sort({ totalPieceSold: -1, createdAt: -1 })
+        .skip(skip)
+        .limit(limit)
+        .populate("brand categories type occasions recipients colors packagingOption suggestedProducts")
+        .lean(),
+      Product.countDocuments({}), // total universe for top-sold list
+    ]);
 
     return res.status(200).json({
       success: true,
-      message: lim === 1 ? 'Top sold product' : `Top ${lim} sold products`,
+      message: "Top sold products",
       data: products,
+      meta: {
+        page,
+        limit,
+        total,
+        totalPages: Math.ceil(total / limit),
+        hasPrev: page > 1,
+        hasNext: page * limit < total,
+        prevPage: page > 1 ? page - 1 : null,
+        nextPage: page * limit < total ? page + 1 : null,
+      },
     });
   } catch (err) {
     return res.status(500).json({ success: false, error: err.message });
