@@ -327,12 +327,35 @@ const removeItem = async (req, res) => {
   }
 };
 
+const getCartLength = async (req, res) => {
+  try {
+    const { userId } = req.params;
+    if (!mongoose.isValidObjectId(userId)) {
+      return res.status(400).json({ success: false, message: "Invalid user id" });
+    }
+
+    const cart = await Cart.findOne({ user: userId }).select("items");
+
+    const distinct = cart?.items?.length || 0; // number of different products
+    const totalQty =
+      cart?.items?.reduce((sum, it) => sum + Number(it?.qty || 0), 0) || 0; // sum of quantities
+
+    return res.status(200).json({
+      success: true,
+      message: "Cart length fetched",
+      data: { distinct, totalQty },
+    });
+  } catch (e) {
+    return res.status(500).json({ success: false, error: e.message });
+  }
+};
 /* -------------------------------- export ------------------------------- */
 module.exports = {
   // list/detail
   getCarts,
   getCartById,
   getCartByUser,
+  getCartLength,
 
   // cart document ops
   createCart,

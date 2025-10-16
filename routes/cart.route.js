@@ -4,6 +4,7 @@ const {// list/detail
   getCarts,
   getCartById,
   getCartByUser,
+  getCartLength,
 
   // cart document ops
   createCart,
@@ -20,6 +21,7 @@ const {// list/detail
 router.get("/lists", getCarts);
 router.get("/lists/:id", getCartById);
 router.get("/lists/user/:userId", getCartByUser);
+router.get("/length/:userId", getCartLength);
 
 router.post("/", createCart);
 router.put("/update:id", updateCart);
