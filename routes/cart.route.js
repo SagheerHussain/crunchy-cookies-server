@@ -1,29 +1,35 @@
-const express = require("express");
-const router = express.Router();
-
-const {
+// routes/cart.route.js
+const router = require("express").Router();
+const {// list/detail
   getCarts,
   getCartById,
   getCartByUser,
+
+  // cart document ops
   createCart,
   updateCart,
   deleteCart,
   bulkDelete,
-} = require("../controllers/cart.controller");
 
-/* -------------------------------- GET ----------------------------- */
+  // item-level ops
+  addItem,
+  addBundle,
+  setItemQty,
+  removeItem, } = require("../controllers/cart.controller");
+
 router.get("/lists", getCarts);
 router.get("/lists/:id", getCartById);
 router.get("/lists/user/:userId", getCartByUser);
 
-/* -------------------------------- POST ----------------------------- */
 router.post("/", createCart);
-
-/* -------------------------------- PUT ----------------------------- */
-router.put("/update/:id", updateCart);
-
-/* -------------------------------- DELETE ----------------------------- */
+router.put("/update:id", updateCart);
 router.delete("/delete/:id", deleteCart);
-router.delete("/bulkDelete", bulkDelete);
+router.delete("/bulk", bulkDelete);
+
+// item-level
+router.post("/items", addItem);            // { user, product, qty }
+router.post("/bundle", addBundle);         // { user, items: [{product, qty}, ...] }
+router.patch("/items/update/:productId", setItemQty); // { user, qty }
+router.delete("/items/delete", removeItem); // { user }
 
 module.exports = router;
