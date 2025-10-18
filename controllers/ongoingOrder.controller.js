@@ -12,7 +12,7 @@ const getOngoingOrders = async (req, res) => {
         {
           path: "order",
           // pick only fields you need on Order
-          select: "code status payment paymentStatus placedAt grandTotal taxAmount discountPercent shippingAddress items",
+          select: "code status payment paymentStatus placedAt grandTotal taxAmount discountPercent shippingAddress items taxAmount appliedCoupon",
           populate: [
             {
               // Order.items -> OrderItem[]
@@ -30,7 +30,12 @@ const getOngoingOrders = async (req, res) => {
             {
               path: "shippingAddress",
               model: "Address",
-              select: "senderPhone receiverPhone city area addressLine1",
+              select: "senderPhone receiverPhone",
+            },
+            {
+              path: "appliedCoupon",
+              model: "Coupon",
+              select: "type code value",
             },
           ],
         },
@@ -54,7 +59,7 @@ const getOngoingOrders = async (req, res) => {
 const getOngoingOrderById = async (req, res) => {
   try {
     const { id } = req.params;
-    const ongoingOrders = await OngoingOrder.find()
+    const ongoingOrder = await OngoingOrder.findById({ _id: id })
       .populate([
         {
           path: "user",
@@ -82,6 +87,11 @@ const getOngoingOrderById = async (req, res) => {
               path: "shippingAddress",
               model: "Address",
               select: "senderPhone receiverPhone city area addressLine1",
+            },
+            {
+              path: "appliedCoupon",
+              model: "Coupon",
+              select: "type code value",
             },
           ],
         },
@@ -132,6 +142,11 @@ const getOngoingOrderByUser = async (req, res) => {
               path: "shippingAddress",
               model: "Address",
               select: "senderPhone receiverPhone city area addressLine1",
+            },
+            {
+              path: "appliedCoupon",
+              model: "Coupon",
+              select: "type code value",
             },
           ],
         },
