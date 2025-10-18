@@ -32,6 +32,11 @@ const getOrdersCancel = async (req, res) => {
               model: "Address",
               select: "senderPhone receiverPhone city area addressLine1",
             },
+            {
+              path: "appliedCoupon",
+              model: "Coupon",
+              select: "type code value",
+            },
           ],
         },
       ])
@@ -82,6 +87,11 @@ const getOrderCancelById = async (req, res) => {
               model: "Address",
               select: "senderPhone receiverPhone city area addressLine1",
             },
+            {
+              path: "appliedCoupon",
+              model: "Coupon",
+              select: "type code value",
+            },
           ],
         },
       ])
@@ -131,6 +141,11 @@ const getOrdersCancelByUser = async (req, res) => {
               path: "shippingAddress",
               model: "Address",
               select: "senderPhone receiverPhone city area addressLine1",
+            },
+            {
+              path: "appliedCoupon",
+              model: "Coupon",
+              select: "type code value",
             },
           ],
         },
