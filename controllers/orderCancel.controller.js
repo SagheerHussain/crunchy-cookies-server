@@ -4,9 +4,37 @@ const OrderCancel = require("../models/OrderCancel.model");
 const getOrdersCancel = async (req, res) => {
   try {
     const ordersCancel = await OrderCancel.find()
-      .populate("user")
-      .populate("order")
-      .populate("payment")
+      .populate([
+        {
+          path: "user",
+          select: "firstName lastName email phone role",
+        },
+        {
+          path: "order",
+          // pick only fields you need on Order
+          select: "code status payment paymentStatus placedAt grandTotal taxAmount discountPercent shippingAddress items",
+          populate: [
+            {
+              // Order.items -> OrderItem[]
+              path: "items",
+              model: "OrderItem",
+              // NOTE: your schema has 'discountForProducts' (not 'avgDiscount')
+              select: "quantity discountForProducts totalAmount products",
+              populate: {
+                // OrderItem.products -> Product
+                path: "products",
+                model: "Product",
+                select: "title ar_title quantity featuredImage price",
+              },
+            },
+            {
+              path: "shippingAddress",
+              model: "Address",
+              select: "senderPhone receiverPhone city area addressLine1",
+            },
+          ],
+        },
+      ])
       .lean();
     if (ordersCancel.length === 0) {
       return res
@@ -26,9 +54,37 @@ const getOrderCancelById = async (req, res) => {
   try {
     const { id } = req.params;
     const orderCancel = await OrderCancel.findById({ _id: id })
-      .populate("user")
-      .populate("order")
-      .populate("payment")
+      .populate([
+        {
+          path: "user",
+          select: "firstName lastName email phone role",
+        },
+        {
+          path: "order",
+          // pick only fields you need on Order
+          select: "code status payment paymentStatus placedAt grandTotal taxAmount discountPercent shippingAddress items",
+          populate: [
+            {
+              // Order.items -> OrderItem[]
+              path: "items",
+              model: "OrderItem",
+              // NOTE: your schema has 'discountForProducts' (not 'avgDiscount')
+              select: "quantity discountForProducts totalAmount products",
+              populate: {
+                // OrderItem.products -> Product
+                path: "products",
+                model: "Product",
+                select: "title ar_title quantity featuredImage price",
+              },
+            },
+            {
+              path: "shippingAddress",
+              model: "Address",
+              select: "senderPhone receiverPhone city area addressLine1",
+            },
+          ],
+        },
+      ])
       .lean();
     if (!orderCancel) {
       return res
@@ -48,9 +104,37 @@ const getOrdersCancelByUser = async (req, res) => {
   try {
     const { userId } = req.params;
     const ordersCancel = await OrderCancel.find({ user: userId })
-      .populate("user")
-      .populate("order")
-      .populate("payment")
+      .populate([
+        {
+          path: "user",
+          select: "firstName lastName email phone role",
+        },
+        {
+          path: "order",
+          // pick only fields you need on Order
+          select: "code status payment paymentStatus placedAt grandTotal taxAmount discountPercent shippingAddress items",
+          populate: [
+            {
+              // Order.items -> OrderItem[]
+              path: "items",
+              model: "OrderItem",
+              // NOTE: your schema has 'discountForProducts' (not 'avgDiscount')
+              select: "quantity discountForProducts totalAmount products",
+              populate: {
+                // OrderItem.products -> Product
+                path: "products",
+                model: "Product",
+                select: "title ar_title quantity featuredImage price",
+              },
+            },
+            {
+              path: "shippingAddress",
+              model: "Address",
+              select: "senderPhone receiverPhone city area addressLine1",
+            },
+          ],
+        },
+      ])
       .lean();
     if (!ordersCancel) {
       return res

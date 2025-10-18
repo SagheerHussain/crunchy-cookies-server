@@ -3,12 +3,44 @@ const OngoingOrder = require("../models/OngoingOrder.model");
 /* -------------------------------- GET ----------------------------- */
 const getOngoingOrders = async (req, res) => {
   try {
-    const ongoingOrders = await OngoingOrder.find().populate("user").populate("order").lean();
-    if (ongoingOrders.length === 0) {
-      return res
-        .status(200)
-        .json({ success: false, message: "Ongoing orders not found" });
-    }   
+    const ongoingOrders = await OngoingOrder.find()
+      .populate([
+        {
+          path: "user",
+          select: "firstName lastName email phone role",
+        },
+        {
+          path: "order",
+          // pick only fields you need on Order
+          select: "code status payment paymentStatus placedAt grandTotal taxAmount discountPercent shippingAddress items",
+          populate: [
+            {
+              // Order.items -> OrderItem[]
+              path: "items",
+              model: "OrderItem",
+              // NOTE: your schema has 'discountForProducts' (not 'avgDiscount')
+              select: "quantity discountForProducts totalAmount products",
+              populate: {
+                // OrderItem.products -> Product
+                path: "products",
+                model: "Product",
+                select: "title ar_title quantity featuredImage price",
+              },
+            },
+            {
+              path: "shippingAddress",
+              model: "Address",
+              select: "senderPhone receiverPhone city area addressLine1",
+            },
+          ],
+        },
+      ])
+      .lean();
+
+    if (!ongoingOrders.length) {
+      return res.status(200).json({ success: false, message: "Ongoing orders not found" });
+    }
+
     return res.status(200).json({
       success: true,
       message: "Ongoing orders found successfully",
@@ -18,10 +50,43 @@ const getOngoingOrders = async (req, res) => {
     return res.status(500).json({ success: false, error: error.message });
   }
 };
+
 const getOngoingOrderById = async (req, res) => {
   try {
     const { id } = req.params;
-    const ongoingOrder = await OngoingOrder.findById({ _id: id }).populate("user").populate("order").lean();
+    const ongoingOrders = await OngoingOrder.find()
+      .populate([
+        {
+          path: "user",
+          select: "firstName lastName email phone role",
+        },
+        {
+          path: "order",
+          // pick only fields you need on Order
+          select: "code status payment paymentStatus placedAt grandTotal taxAmount discountPercent shippingAddress items",
+          populate: [
+            {
+              // Order.items -> OrderItem[]
+              path: "items",
+              model: "OrderItem",
+              // NOTE: your schema has 'discountForProducts' (not 'avgDiscount')
+              select: "quantity discountForProducts totalAmount products",
+              populate: {
+                // OrderItem.products -> Product
+                path: "products",
+                model: "Product",
+                select: "title ar_title quantity featuredImage price",
+              },
+            },
+            {
+              path: "shippingAddress",
+              model: "Address",
+              select: "senderPhone receiverPhone city area addressLine1",
+            },
+          ],
+        },
+      ])
+      .lean();
     if (!ongoingOrder) {
       return res
         .status(200)
@@ -37,23 +102,56 @@ const getOngoingOrderById = async (req, res) => {
   }
 };
 const getOngoingOrderByUser = async (req, res) => {
-    try {
-      const { userId } = req.params;
-      const ongoingOrder = await OngoingOrder.find({ user: userId }).populate("user").populate("order").lean();
-      if (!ongoingOrder) {
-        return res
-          .status(200)
-          .json({ success: false, message: "Ongoing order not found" });
-      }
-      return res.status(200).json({
-        success: true,
-        message: "Ongoing order found successfully",
-        data: ongoingOrder,
-      });
-    } catch (error) {
-      return res.status(500).json({ success: false, error: error.message });
+  try {
+    const { userId } = req.params;
+    const ongoingOrder = await OngoingOrder.find({ user: userId })
+      .populate([
+        {
+          path: "user",
+          select: "firstName lastName email phone role",
+        },
+        {
+          path: "order",
+          // pick only fields you need on Order
+          select: "code status payment paymentStatus placedAt grandTotal taxAmount discountPercent shippingAddress items",
+          populate: [
+            {
+              // Order.items -> OrderItem[]
+              path: "items",
+              model: "OrderItem",
+              // NOTE: your schema has 'discountForProducts' (not 'avgDiscount')
+              select: "quantity discountForProducts totalAmount products",
+              populate: {
+                // OrderItem.products -> Product
+                path: "products",
+                model: "Product",
+                select: "title ar_title quantity featuredImage price",
+              },
+            },
+            {
+              path: "shippingAddress",
+              model: "Address",
+              select: "senderPhone receiverPhone city area addressLine1",
+            },
+          ],
+        },
+      ])
+      .lean();
+
+    if (!ongoingOrder) {
+      return res
+        .status(200)
+        .json({ success: false, message: "Ongoing order not found" });
     }
-  };
+    return res.status(200).json({
+      success: true,
+      message: "Ongoing order found successfully",
+      data: ongoingOrder,
+    });
+  } catch (error) {
+    return res.status(500).json({ success: false, error: error.message });
+  }
+};
 
 /* -------------------------------- POST ----------------------------- */
 const createOngoingOrder = async (req, res) => {
