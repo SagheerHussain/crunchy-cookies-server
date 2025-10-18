@@ -36,7 +36,7 @@ async function reflectOrderState(orderDocOrLean) {
   const orderId = order._id;
   const status = String(order.status || "").toLowerCase();
   const isOngoing = ["pending", "confirmed", "shipped"].includes(status);
-  const isDelivered = status === "delivered";
+  const isDelivered = status === "delivered" || status === "cancelled" || status === "returned";
   const isCancelled = status === "cancelled" || status === "returned";
 
   // --- OngoingOrder upsert/remove ---
