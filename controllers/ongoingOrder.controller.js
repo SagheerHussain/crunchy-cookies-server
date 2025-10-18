@@ -12,7 +12,7 @@ const getOngoingOrders = async (req, res) => {
         {
           path: "order",
           // pick only fields you need on Order
-          select: "code status payment paymentStatus placedAt grandTotal taxAmount discountPercent shippingAddress items taxAmount appliedCoupon",
+          select: "code status payment paymentStatus placedAt grandTotal taxAmount shippingAddress items taxAmount appliedCoupon",
           populate: [
             {
               // Order.items -> OrderItem[]
@@ -68,7 +68,7 @@ const getOngoingOrderById = async (req, res) => {
         {
           path: "order",
           // pick only fields you need on Order
-          select: "code status payment paymentStatus placedAt grandTotal taxAmount discountPercent shippingAddress items",
+          select: "code status payment paymentStatus placedAt grandTotal taxAmount shippingAddress items taxAmount appliedCoupon",
           populate: [
             {
               // Order.items -> OrderItem[]
@@ -123,7 +123,7 @@ const getOngoingOrderByUser = async (req, res) => {
         {
           path: "order",
           // pick only fields you need on Order
-          select: "code status payment paymentStatus placedAt grandTotal taxAmount discountPercent shippingAddress items",
+          select: "code status payment paymentStatus placedAt grandTotal taxAmount shippingAddress items taxAmount appliedCoupon",
           populate: [
             {
               // Order.items -> OrderItem[]
