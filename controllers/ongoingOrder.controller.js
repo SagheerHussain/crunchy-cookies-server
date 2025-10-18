@@ -3,7 +3,7 @@ const OngoingOrder = require("../models/OngoingOrder.model");
 /* -------------------------------- GET ----------------------------- */
 const getOngoingOrders = async (req, res) => {
   try {
-    const ongoingOrders = await OngoingOrder.find().populate("user").populate("order").populate("payment").lean();
+    const ongoingOrders = await OngoingOrder.find().populate("user").populate("order").lean();
     if (ongoingOrders.length === 0) {
       return res
         .status(200)
@@ -21,7 +21,7 @@ const getOngoingOrders = async (req, res) => {
 const getOngoingOrderById = async (req, res) => {
   try {
     const { id } = req.params;
-    const ongoingOrder = await OngoingOrder.findById({ _id: id }).populate("user").populate("order").populate("payment").lean();
+    const ongoingOrder = await OngoingOrder.findById({ _id: id }).populate("user").populate("order").lean();
     if (!ongoingOrder) {
       return res
         .status(200)
@@ -39,7 +39,7 @@ const getOngoingOrderById = async (req, res) => {
 const getOngoingOrderByUser = async (req, res) => {
     try {
       const { userId } = req.params;
-      const ongoingOrder = await OngoingOrder.find({ user: userId }).populate("user").populate("order").populate("payment").lean();
+      const ongoingOrder = await OngoingOrder.find({ user: userId }).populate("user").populate("order").lean();
       if (!ongoingOrder) {
         return res
           .status(200)

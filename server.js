@@ -129,6 +129,3 @@ if (require.main === module && !process.env.VERCEL) {
     }, intervalMs);
   });
 }
-
-/* Start */
-// app.listen(PORT, () => console.log(`Server is running on port ${PORT}`));
