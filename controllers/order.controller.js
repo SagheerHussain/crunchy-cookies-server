@@ -35,69 +35,89 @@ async function reflectOrderState(orderDocOrLean) {
 
   const orderId = order._id;
   const status = String(order.status || "").toLowerCase();
-  const isOngoing = ["pending", "confirmed", "shipped"].includes(status);
-  const isDelivered = status === "delivered" || status === "cancelled" || status === "returned";
-  const isCancelled = status === "cancelled" || status === "returned";
 
-  // --- OngoingOrder upsert/remove ---
+  const isOngoing  = ["pending", "confirmed", "shipped"].includes(status);
+  const isHistory  = ["delivered", "cancelled", "returned"].includes(status);
+  const isCanceled = ["cancelled", "returned"].includes(status);
+
+  /* ------------------------ Ongoing Orders ------------------------ */
   if (isOngoing) {
     await OngoingOrder.findOneAndUpdate(
       { order: orderId },
       {
         $set: {
           user: order?.user?._id,
-          status: status,
-          // mirror paid/unpaid from order.payment
+          status,
           paymentStatus: order.payment === "paid" ? "paid" : "pending",
         },
-        $setOnInsert: { at: new Date() },
+        $setOnInsert: {
+          order: orderId,
+          createdAt: new Date(),
+        },
       },
       { upsert: true, new: true }
     );
   } else {
-    // If the order is no longer ongoing, ensure it doesn't appear in ongoing list
     await OngoingOrder.deleteOne({ order: orderId });
   }
 
-  // --- OrderHistory (delivered) ---
-  if (isDelivered) {
-    await OrderHistory.findOneAndUpdate(
+  /* ------------------------ Order History ------------------------ */
+  if (isHistory) {
+    // Try update; if none matched, create manually
+    const updated = await OrderHistory.findOneAndUpdate(
       { order: orderId },
       {
         $set: {
           user: order?.user?._id,
-          // keep most recent notes if you want—here we mirror from cardMessage fields as lightweight context
+          status,
           notes: order.cardMessage || undefined,
           ar_notes: order.ar_cardMessage || undefined,
         },
-        $setOnInsert: { at: order.deliveredAt || new Date() },
       },
-      { upsert: true, new: true }
+      { new: true }
     );
+
+    if (!updated) {
+      await OrderHistory.create({
+        order: orderId,
+        user: order?.user?._id,
+        status,
+        notes: order.cardMessage || undefined,
+        ar_notes: order.ar_cardMessage || undefined,
+        at: order.deliveredAt || new Date(),
+      });
+    }
   } else {
-    // If the order is no longer ongoing, ensure it doesn't appear in ongoing list
     await OrderHistory.deleteOne({ order: orderId });
   }
 
-  // --- OrderCancel (cancelled) ---
-  if (isCancelled) {
-    await OrderCancel.findOneAndUpdate(
+  /* ------------------------ Cancelled / Returned Orders ------------------------ */
+  if (isCanceled) {
+    const updatedCancel = await OrderCancel.findOneAndUpdate(
       { order: orderId },
       {
         $set: {
           user: order?.user?._id,
           refundReason: order.cancelReason || null,
           paymentStatus: order.payment === "paid" ? "paid" : "unpaid",
-        },
-        $setOnInsert: {
-          at: new Date(),
-          refundAmount: 0,
+          status,
         },
       },
-      { upsert: true, new: true }
+      { new: true }
     );
+
+    if (!updatedCancel) {
+      await OrderCancel.create({
+        order: orderId,
+        user: order?.user?._id,
+        status,
+        refundReason: order.cancelReason || null,
+        paymentStatus: order.payment === "paid" ? "paid" : "unpaid",
+        refundAmount: 0,
+        at: new Date(),
+      });
+    }
   } else {
-    // If the order is no longer ongoing, ensure it doesn't appear in ongoing list
     await OrderCancel.deleteOne({ order: orderId });
   }
 }
