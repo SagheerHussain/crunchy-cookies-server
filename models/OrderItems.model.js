@@ -2,9 +2,9 @@ const mongoose = require('mongoose');
 
 const orderItemSchema = new mongoose.Schema(
   {
-    products: [{ type: mongoose.Schema.Types.ObjectId, ref: 'Product' }],
+    products: { type: mongoose.Schema.Types.ObjectId, ref: 'Product' },
     quantity: { type: Number, default: 1 },
-    avgDiscount: { type: Number, default: 0 },
+    discountForProducts: { type: Number, default: 0 },
     totalAmount: { type: Number, default: 0 },
   },
   { timestamps: true }

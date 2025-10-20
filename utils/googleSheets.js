@@ -1,10 +1,12 @@
 // utils/googleSheets.js
 const { google } = require("googleapis");
+const { GoogleAuth } = require("google-auth-library");
+const fs = require("fs");
 const path = require("path");
 
-let _client, _sheets;
+let _sheets;
 
-// Convert 1-based col index to A1 letter(s)
+/** A1 helpers */
 const colToA1 = (n) => {
   let s = "";
   while (n > 0) {
@@ -15,22 +17,59 @@ const colToA1 = (n) => {
   return s;
 };
 
+function buildCredentialsFromEnv() {
+  if (process.env.GCP_SA_KEY_JSON) {
+    try {
+      return JSON.parse(process.env.GCP_SA_KEY_JSON);
+    } catch (e) {
+      throw new Error("GCP_SA_KEY_JSON is not valid JSON");
+    }
+  }
+  if (process.env.GCP_SA_KEY_B64) {
+    try {
+      const json = Buffer.from(process.env.GCP_SA_KEY_B64, "base64").toString("utf8");
+      return JSON.parse(json);
+    } catch {
+      throw new Error("GCP_SA_KEY_B64 is not valid base64/JSON");
+    }
+  }
+  return null;
+}
+
 async function getSheets() {
   if (_sheets) return _sheets;
 
-  const keyFile = process.env.GOOGLE_APPLICATION_CREDENTIALS || path.resolve("credentials.json");
-  const auth = new google.auth.GoogleAuth({
-    keyFile,
-    scopes: ["https://www.googleapis.com/auth/spreadsheets"],
-  });
-  _client = await auth.getClient();
-  _sheets = google.sheets({ version: "v4", auth: _client });
+  const creds = buildCredentialsFromEnv();
+  let auth;
+
+  if (creds) {
+    auth = new GoogleAuth({
+      credentials: creds,
+      scopes: ["https://www.googleapis.com/auth/spreadsheets"],
+    });
+  } else {
+    // Local fallback: use a key file if present
+    const keyFile =
+      process.env.GOOGLE_APPLICATION_CREDENTIALS ||
+      path.resolve(process.cwd(), "credentials.json");
+    if (!fs.existsSync(keyFile)) {
+      throw new Error(
+        "No Google credentials found. Set GCP_SA_KEY_JSON (or GCP_SA_KEY_B64) or provide credentials.json"
+      );
+    }
+    auth = new GoogleAuth({
+      keyFile,
+      scopes: ["https://www.googleapis.com/auth/spreadsheets"],
+    });
+  }
+
+  const client = await auth.getClient();
+  _sheets = google.sheets({ version: "v4", auth: client });
   return _sheets;
 }
 
 async function ensureHeaderRow({ spreadsheetId, sheetName, headers }) {
   const sheets = await getSheets();
-
   const current = await sheets.spreadsheets.values.get({
     spreadsheetId,
     range: `${sheetName}!1:1`,
@@ -62,30 +101,28 @@ async function getAllRows({ spreadsheetId, sheetName }) {
 
 /**
  * Upsert a row by a unique key (e.g., Code)
- * - If Code exists in header column, update that row
- * - Else append as new row
  */
 async function upsertRowByKey({
   spreadsheetId,
   sheetName,
   headers,
-  keyColumnName, // e.g. "Code"
-  keyValue,      // e.g. order.code
-  rowValues,     // array aligned to headers length
+  keyColumnName,
+  keyValue,
+  rowValues,
 }) {
   const sheets = await getSheets();
 
-  // 1) Make sure headers are present
+  // 1) Ensure headers
   await ensureHeaderRow({ spreadsheetId, sheetName, headers });
 
-  // 2) Read all rows to find key
-  const values = await getAllRows({ spreadsheetId, sheetName }); // includes header row at index 0
+  // 2) Search for existing key
+  const values = await getAllRows({ spreadsheetId, sheetName }); // includes header row (index 0)
   if (!values.length) {
-    // header ensured, but empty sheet—just append
     await sheets.spreadsheets.values.append({
       spreadsheetId,
       range: `${sheetName}!A1`,
       valueInputOption: "USER_ENTERED",
+      insertDataOption: "INSERT_ROWS",
       requestBody: { values: [headers, rowValues] },
     });
     return { action: "appended", rowIndex: 2 };
@@ -97,21 +134,21 @@ async function upsertRowByKey({
     throw new Error(`Key column "${keyColumnName}" not found in sheet headers`);
   }
 
-  let foundRowIndex = -1; // 1-based Excel row number
+  let foundRowIndex = -1; // 1-based
   for (let i = 1; i < values.length; i++) {
     const row = values[i] || [];
     if (String(row[keyColIndex] || "").trim() === String(keyValue).trim()) {
-      foundRowIndex = i + 1; // because values[0] is header -> row #1
+      foundRowIndex = i + 1;
       break;
     }
   }
 
   if (foundRowIndex === -1) {
-    // Append new row
     await sheets.spreadsheets.values.append({
       spreadsheetId,
       range: `${sheetName}!A1`,
       valueInputOption: "USER_ENTERED",
+      insertDataOption: "INSERT_ROWS",
       requestBody: { values: [rowValues] },
     });
     return { action: "appended", rowIndex: values.length + 1 };
@@ -120,7 +157,6 @@ async function upsertRowByKey({
   // Update existing row
   const endCol = colToA1(headers.length);
   const range = `${sheetName}!A${foundRowIndex}:${endCol}${foundRowIndex}`;
-
   await sheets.spreadsheets.values.update({
     spreadsheetId,
     range,

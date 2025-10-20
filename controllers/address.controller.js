@@ -98,8 +98,7 @@ const deleteAddress = async (req, res) => {
 
 const bulkDelete = async (req, res) => {
   try {
-    const { ids } = req.params;
-    const address = await Address.deleteMany({ _id: { $in: ids } });
+    const address = await Address.deleteMany({});
 
     return res.status(201).json({
       success: true,

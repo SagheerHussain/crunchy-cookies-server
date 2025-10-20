@@ -4,7 +4,42 @@ const OrderHistory = require("../models/OrderHistory.model");
 const getOrdersHistory = async (req, res) => {
   try {
     const ordersHistory = await OrderHistory.find()
-      .populate("order")
+      .populate([
+        {
+          path: "user",
+          select: "firstName lastName email phone role",
+        },
+        {
+          path: "order",
+          // pick only fields you need on Order
+          select: "code status payment placedAt deliveredAt grandTotal taxAmount shippingAddress items",
+          populate: [
+            {
+              // Order.items -> OrderItem[]
+              path: "items",
+              model: "OrderItem",
+              // NOTE: your schema has 'discountForProducts' (not 'avgDiscount')
+              select: "quantity discountForProducts totalAmount products",
+              populate: {
+                // OrderItem.products -> Product
+                path: "products",
+                model: "Product",
+                select: "title ar_title quantity featuredImage price",
+              },
+            },
+            {
+              path: "shippingAddress",
+              model: "Address",
+              select: "senderPhone receiverPhone city area addressLine1",
+            },
+            {
+              path: "appliedCoupon",
+              model: "Coupon",
+              select: "type code value",
+            },
+          ],
+        },
+      ])
       .lean();
     if (ordersHistory.length === 0) {
       return res
@@ -24,7 +59,42 @@ const getOrderHistoryById = async (req, res) => {
   try {
     const { id } = req.params;
     const orderHistory = await OrderHistory.findById({ _id: id })
-      .populate("order")
+      .populate([
+        {
+          path: "user",
+          select: "firstName lastName email phone role",
+        },
+        {
+          path: "order",
+          // pick only fields you need on Order
+          select: "code status payment placedAt deliveredAt grandTotal taxAmount shippingAddress items",
+          populate: [
+            {
+              // Order.items -> OrderItem[]
+              path: "items",
+              model: "OrderItem",
+              // NOTE: your schema has 'discountForProducts' (not 'avgDiscount')
+              select: "quantity discountForProducts totalAmount products",
+              populate: {
+                // OrderItem.products -> Product
+                path: "products",
+                model: "Product",
+                select: "title ar_title quantity featuredImage price",
+              },
+            },
+            {
+              path: "shippingAddress",
+              model: "Address",
+              select: "senderPhone receiverPhone city area addressLine1",
+            },
+            {
+              path: "appliedCoupon",
+              model: "Coupon",
+              select: "type code value",
+            },
+          ],
+        },
+      ])
       .lean();
     if (!orderHistory) {
       return res
@@ -44,7 +114,42 @@ const getOrdersHistoryByUser = async (req, res) => {
   try {
     const { userId } = req.params;
     const ordersHistory = await OrderHistory.find({ user: userId })
-      .populate("order")
+      .populate([
+        {
+          path: "user",
+          select: "firstName lastName email phone role",
+        },
+        {
+          path: "order",
+          // pick only fields you need on Order
+          select: "code status payment placedAt deliveredAt grandTotal taxAmount shippingAddress items",
+          populate: [
+            {
+              // Order.items -> OrderItem[]
+              path: "items",
+              model: "OrderItem",
+              // NOTE: your schema has 'discountForProducts' (not 'avgDiscount')
+              select: "quantity discountForProducts totalAmount products",
+              populate: {
+                // OrderItem.products -> Product
+                path: "products",
+                model: "Product",
+                select: "title ar_title quantity featuredImage price",
+              },
+            },
+            {
+              path: "shippingAddress",
+              model: "Address",
+              select: "senderPhone receiverPhone city area addressLine1",
+            },
+            {
+              path: "appliedCoupon",
+              model: "Coupon",
+              select: "type code value",
+            },
+          ],
+        },
+      ])
       .lean();
     if (!ordersHistory) {
       return res

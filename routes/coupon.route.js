@@ -4,6 +4,7 @@ const router = express.Router();
 const {
     getCoupons,
     getCouponById,
+    checkIfCouponExist,
     createCoupon,
     updateCoupon,
     deleteCoupon,
@@ -15,6 +16,7 @@ router.get("/lists", getCoupons);
 router.get("/lists/:id", getCouponById);
 
 /* -------------------------------- POST ----------------------------- */
+router.post("/check", checkIfCouponExist);
 router.post("/", createCoupon);
 
 /* -------------------------------- PUT ----------------------------- */

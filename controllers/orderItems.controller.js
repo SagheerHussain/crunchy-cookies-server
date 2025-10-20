@@ -145,7 +145,7 @@ const deleteOrderItems = async (req, res) => {
 const bulkDelete = async (req, res) => {
   try {
     const { ids } = req.params;
-    const orderItems = await OrderItems.deleteMany({ _id: { $in: ids } });
+    const orderItems = await OrderItems.deleteMany({});
 
     return res.status(201).json({
       success: true,

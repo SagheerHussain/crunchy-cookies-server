@@ -3,7 +3,7 @@ const Order = require("../models/Order.model");
 const Product = require('../models/Product.model');
 
 const MONTHS = ['Jan', 'Feb', 'Mar', 'Apr', 'May', 'Jun', 'Jul', 'Aug', 'Sep', 'Oct', 'Nov', 'Dec'];
-const CUSTOMER_SATISFACTION = ['poor', 'extremely satisfied', 'satisfied', 'very poor']
+const CUSTOMER_SATISFACTION = ['poor', 'extremely satisfied', 'satisfied', 'very poor'];
 
 const getOverview = async (req, res, next) => {
   try {
@@ -14,7 +14,7 @@ const getOverview = async (req, res, next) => {
     if (from || to) {
       timeMatch.createdAt = {};
       if (from) timeMatch.createdAt.$gte = new Date(from);
-      if (to) timeMatch.createdAt.$lte = new Date(to);
+      if (to)   timeMatch.createdAt.$lte = new Date(to);
     }
 
     // 1) Orders Delivered (count)
@@ -33,17 +33,17 @@ const getOverview = async (req, res, next) => {
       { $project: { _id: 0, sold: 1 } },
     ]).then(r => r[0]?.sold || 0);
 
-    // 4) Expected Amount = sum of totalAmount for ALL orders (regardless of payment)
+    // 4) Expected Amount (pending receivables) = sum grandTotal where payment === 'pending'
     const expectedAmountPromise = Order.aggregate([
       { $match: { ...timeMatch, payment: 'pending' } },
-      { $group: { _id: null, amt: { $sum: { $toDouble: { $ifNull: ['$totalAmount', 0] } } } } },
+      { $group: { _id: null, amt: { $sum: { $toDouble: { $ifNull: ['$grandTotal', 0] } } } } },
       { $project: { _id: 0, amt: 1 } },
     ]).then(r => Number(r[0]?.amt || 0));
 
-    // 5) Net Profit (collected revenue) = sum totalAmount where payment === 'paid'
+    // 5) Net Profit (collected revenue) = sum grandTotal where payment === 'paid'
     const netProfitPromise = Order.aggregate([
       { $match: { ...timeMatch, payment: 'paid' } },
-      { $group: { _id: null, amt: { $sum: { $toDouble: { $ifNull: ['$totalAmount', 0] } } } } },
+      { $group: { _id: null, amt: { $sum: { $toDouble: { $ifNull: ['$grandTotal', 0] } } } } },
       { $project: { _id: 0, amt: 1 } },
     ]).then(r => Number(r[0]?.amt || 0));
 
@@ -59,11 +59,11 @@ const getOverview = async (req, res, next) => {
     res.json({
       success: true,
       data: {
-        netProfit,          // e.g. 187001  -> UI me $ + format
-        ordersDelivered,    // e.g. 21345
-        totalProducts,      // e.g. 7321
-        productsSold,       // e.g. 81987
-        expectedAmount,     // ALL orders ka total
+        netProfit,          // sum of grandTotal where payment === 'paid'
+        ordersDelivered,    // delivered orders count
+        totalProducts,      // active products count
+        productsSold,       // sum of totalPieceSold
+        expectedAmount,     // sum of grandTotal where payment === 'pending'
       },
     });
   } catch (err) {
@@ -73,7 +73,6 @@ const getOverview = async (req, res, next) => {
 
 const getCurrentYearOrders = async (req, res) => {
   try {
-
     const year = new Date().getFullYear();
     const tz = 'UTC';
 
@@ -87,9 +86,7 @@ const getCurrentYearOrders = async (req, res) => {
       {
         $group: {
           _id: {
-            month: {
-              $month: { date: `$createdAt`, timezone: 'UTC' }
-            }
+            month: { $month: { date: `$createdAt`, timezone: 'UTC' } }
           },
           orders: { $sum: 1 },
         }
@@ -104,12 +101,10 @@ const getCurrentYearOrders = async (req, res) => {
       { $sort: { month: 1 } }
     ]);
 
-    console.log("Aggregation Pipeline", agg);
-
     const byMonth = new Map(agg.map(r => [r.month, r]));
     const monthly = Array.from({ length: 12 }, (_, i) => {
       const m = i + 1;
-      const row = byMonth.get(m) || { orders: 0, amount: 0 };
+      const row = byMonth.get(m) || { orders: 0 };
       return { month: m, label: MONTHS[i], orders: row.orders };
     });
 
@@ -193,10 +188,8 @@ const getCustomersReviews = async (req, res) => {
 
     // if no reviews yet, return zeros in the same shape
     const emptyBreakdown = CUSTOMER_SATISFACTION.map(k => ({ k, count: 0, percent: 0 }));
-
     const result = doc || { total: 0, breakdown: emptyBreakdown };
 
-    // extra: chart-friendly series
     const labels = result.breakdown.map(b =>
       b.k.replace(/\b\w/g, ch => ch.toUpperCase()) // title-case for UI
     );
@@ -208,24 +201,21 @@ const getCustomersReviews = async (req, res) => {
     });
   } catch (err) {
     console.error('getCustomersReviews error:', err);
-    return res.status(500).json({
-      message: 'Failed to compute customer reviews',
-      error: err.message
-    });
+    return res.status(500).json({ message: 'Failed to compute customer reviews', error: err.message });
   }
 };
 
 const getSalesBreakdown = async (req, res) => {
   try {
     const tz = req.query.tz || 'UTC';
-    const status = req.query.status || '';              // e.g. 'delivered' (empty = no filter)
-    const dateField = req.query.dateField || 'createdAt';  // 'deliveredAt' if preferred
+    const status = req.query.status || '';                 // e.g. 'delivered' (empty = no filter)
+    const dateField = req.query.dateField || 'createdAt';  // or 'deliveredAt'
 
     const now = new Date();
     const fmt = (opt) => new Intl.DateTimeFormat('en', { timeZone: tz, ...opt }).format(now);
     const currentYear = parseInt(fmt({ year: 'numeric' }), 10);
     const currentMonth = parseInt(fmt({ month: 'numeric' }), 10); // 1..12
-    const daysInMonth = new Date(currentYear, currentMonth, 0).getDate();
+    const daysInMonth = new Date(currentYear, currentMonth, 0).getDate(); // correct with 1..12
 
     const baseMatch = {};
     if (status) baseMatch.status = status;
@@ -240,7 +230,7 @@ const getSalesBreakdown = async (req, res) => {
               $match: {
                 $expr: {
                   $and: [
-                    { $eq: [{ $year: { date: `$${dateField}`, timezone: tz } }, currentYear] },
+                    { $eq: [{ $year:  { date: `$${dateField}`, timezone: tz } }, currentYear] },
                     { $eq: [{ $month: { date: `$${dateField}`, timezone: tz } }, currentMonth] }
                   ]
                 }
@@ -249,7 +239,7 @@ const getSalesBreakdown = async (req, res) => {
             {
               $group: {
                 _id: { day: { $dayOfMonth: { date: `$${dateField}`, timezone: tz } } },
-                total: { $sum: { $ifNull: ['$totalAmount', 0] } }
+                total: { $sum: { $toDouble: { $ifNull: ['$grandTotal', 0] } } }
               }
             },
             { $project: { _id: 0, day: '$_id.day', total: 1 } },
@@ -266,7 +256,7 @@ const getSalesBreakdown = async (req, res) => {
             {
               $group: {
                 _id: { month: { $month: { date: `$${dateField}`, timezone: tz } } },
-                total: { $sum: { $ifNull: ['$totalAmount', 0] } }
+                total: { $sum: { $toDouble: { $ifNull: ['$grandTotal', 0] } } }
               }
             },
             { $project: { _id: 0, month: '$_id.month', total: 1 } },
@@ -278,7 +268,7 @@ const getSalesBreakdown = async (req, res) => {
             {
               $group: {
                 _id: { year: { $year: { date: `$${dateField}`, timezone: tz } } },
-                total: { $sum: { $ifNull: ['$totalAmount', 0] } }
+                total: { $sum: { $toDouble: { $ifNull: ['$grandTotal', 0] } } }
               }
             },
             { $project: { _id: 0, year: '$_id.year', total: 1 } },
@@ -290,7 +280,6 @@ const getSalesBreakdown = async (req, res) => {
 
     const [facet] = await Order.aggregate(pipeline);
 
-    // Fill gaps and shape response
     const MONTHS = ['Jan', 'Feb', 'Mar', 'Apr', 'May', 'Jun', 'Jul', 'Aug', 'Sep', 'Oct', 'Nov', 'Dec'];
 
     // Current month
@@ -371,17 +360,15 @@ const getCountsOrdersAndSales = async (req, res) => {
         $group: {
           _id: null,
           orders: { $sum: 1 },
-          sales:  { $sum: { $ifNull: ['$totalAmount', 0] } }
+          sales:  { $sum: { $toDouble: { $ifNull: ['$grandTotal', 0] } } }
         }
       },
       { $project: { _id: 0, orders: 1, sales: 1 } }
     ]);
 
-    // Defaults if no docs
     const orders = doc.orders || 0;
     const sales  = Number(doc.sales || 0);
 
-    // prevent caching
     res.set('Cache-Control', 'no-store');
     return res.json({ orders, sales, filters: { status, dateField, from, to } });
   } catch (error) {
@@ -396,4 +383,4 @@ module.exports = {
   getCustomersReviews,
   getSalesBreakdown,
   getCountsOrdersAndSales
-}
+};
