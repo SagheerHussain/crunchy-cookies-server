@@ -15,3 +15,4 @@ const categoryTypeSchema = new mongoose.Schema(
 const CategoryType = mongoose.model("CategoryType", categoryTypeSchema);
 
 module.exports = CategoryType;
+

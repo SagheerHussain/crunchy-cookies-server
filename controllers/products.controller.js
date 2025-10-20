@@ -7,6 +7,7 @@ const mongoose = require("mongoose");
 const SubCategory = require("../models/SubCategory.model");
 const Occasion = require("../models/Occasion.model");
 const Recipient = require("../models/Recipient.model");
+const Brand = require("../models/Brand.model");
 
 const AVAILABILITY = ["in_stock", "low_stock", "out_of_stock"];
 
@@ -160,6 +161,57 @@ const deriveStock = (total, remain) => {
   return { totalPieceSold: sold, stockStatus };
 };
 
+const toList = (v) =>
+  Array.from(
+    new Set(
+      (Array.isArray(v) ? v : `${v || ""}`.split(","))
+        .map((x) => `${x}`.trim())
+        .filter(Boolean)
+    )
+  );
+
+// Given a list of IDs/slugs, return the matching _ids for a model (by slug or _id)
+async function resolveIds(Model, values) {
+  if (!values?.length) return [];
+
+  const byId = values.filter(isValidObjectId);
+  const bySlug = values.filter((x) => !isValidObjectId(x));
+
+  const found = [];
+
+  if (byId.length) {
+    // Only take valid ObjectIds—assume they exist
+    found.push(...byId.map((id) => new mongoose.Types.ObjectId(id)));
+  }
+
+  if (bySlug.length && Model) {
+    const docs = await Model.find({ slug: { $in: bySlug } }, { _id: 1 }).lean();
+    found.push(...docs.map((d) => d._id));
+  }
+
+  return Array.from(new Set(found.map(String))).map(
+    (id) => new mongoose.Types.ObjectId(id)
+  );
+}
+
+// Optional sort mapping
+function buildSort(sortKey) {
+  switch (sortKey) {
+    case "price-asc":
+      return { price: 1 };
+    case "price-desc":
+      return { price: -1 };
+    case "new-desc":
+      return { createdAt: -1 };
+    case "rating-desc":
+      // If you later add a rating field, change this
+      return { totalPieceSold: -1, createdAt: -1 };
+    case "popularity-desc":
+    default:
+      return { totalPieceSold: -1, createdAt: -1 };
+  }
+}
+
 /* --------------------------- paging ------------------------ */
 const getPagination = (q = {}) => {
   const rawPage = parseInt(q.page, 10);
@@ -281,88 +333,69 @@ const getProductById = async (req, res) => {
   }
 };
 
-const getFilteredProducts = async (req, res) => {
+const getProductsByFilters = async (req, res) => {
   try {
-    const { page, limit, skip } = getPagination(req.query);
-    const {
-      category,
-      categories,
-      occasion,
-      recipient,
-      color,
-      packagingOption,
-      priceLabel,
-      minPrice,
-      maxPrice,
-      sort,
-    } = req.query;
+    // Collect & normalize query params
+    const subCatQ = toList(req.query.subCategory);
+    const occQ = toList(req.query.occasion);
+    const brandQ = toList(req.query.brand);
+    const recQ = toList(req.query.recipient);
 
-    const query = {};
-    const catIds = splitToIds(category || categories);
-    const occIds = splitToIds(occasion);
-    const recIds = splitToIds(recipient);
-    const colIds = splitToIds(color);
+    const page = Math.max(1, parseInt(`${req.query.page || 1}`, 10));
+    const limit = Math.max(1, parseInt(`${req.query.limit || 10}`, 10)); // default 10
+    const skip = (page - 1) * limit;
+    const sort = buildSort(req.query.sort);
 
-    if (catIds?.length) query.categories = { $in: catIds };
-    if (occIds?.length) query.occasions = { $in: occIds };
-    if (recIds?.length) query.recipients = { $in: recIds };
-    if (colIds?.length) query.colors = { $in: colIds };
-    if (packagingOption) query.packagingOption = packagingOption;
+    // Resolve to _ids (handle slugs or ids)
+    const [subCategoryIds, occasionIds, brandIds, recipientIds] =
+      await Promise.all([
+        resolveIds(SubCategory, subCatQ),
+        resolveIds(Occasion, occQ),
+        resolveIds(Brand, brandQ),
+        resolveIds(Recipient, recQ),
+      ]);
 
-    if (minPrice != null || maxPrice != null) {
-      query.price = {};
-      if (minPrice != null) query.price.$gte = Number(minPrice);
-      if (maxPrice != null) query.price.$lte = Number(maxPrice);
-    }
+    // Build filter
+    const filter = { isActive: true }; // only active products by default
+    if (subCategoryIds.length) filter.categories = { $in: subCategoryIds };
+    if (occasionIds.length) filter.occasions = { $in: occasionIds };
+    if (brandIds.length) filter.brand = { $in: brandIds };
+    if (recipientIds.length) filter.recipients = { $in: recipientIds };
 
-    let sortObj = {};
-    if (priceLabel === "low_to_high") sortObj.price = 1;
-    if (priceLabel === "high_to_low") sortObj.price = -1;
-    if (sort === "newest") sortObj.createdAt = -1;
-    if (sort === "oldest") sortObj.createdAt = 1;
-
-    const [products, total] = await Promise.all([
-      Product.find(query)
-        .sort(sortObj)
-        .populate(
-          "brand categories type occasions recipients colors packagingOption suggestedProducts"
-        )
+    // Count + query
+    const [total, items] = await Promise.all([
+      Product.countDocuments(filter),
+      Product.find(filter)
+        .sort(sort)
         .skip(skip)
         .limit(limit)
+        .populate([
+          { path: "brand", select: "name ar_name slug logo" },
+          {
+            path: "categories",
+            select: "name ar_name slug parent",
+            populate: {
+              path: "parent", // 👈 this is your Category reference
+              select: "name ar_name slug",
+            },
+          },
+          { path: "occasions", select: "name ar_name slug" },
+          { path: "recipients", select: "name ar_name slug" },
+          { path: "colors", select: "name ar_name slug" },
+        ])
         .lean(),
-      Product.countDocuments(query),
     ]);
-
-    if (products.length === 0) {
-      return res.status(200).json({
-        success: false,
-        message: "Product not found",
-        meta: {
-          page,
-          limit,
-          total,
-          totalPages: Math.ceil(total / limit) || 0,
-          hasPrev: page > 1,
-          hasNext: page * limit < total,
-          prevPage: page > 1 ? page - 1 : null,
-          nextPage: page * limit < total ? page + 1 : null,
-        },
-      });
-    }
 
     return res.status(200).json({
       success: true,
-      message: "Product found successfully",
-      data: products,
-      meta: {
+      data: {
+        docs: items,
+        totalDocs: total,
         page,
         limit,
-        total,
-        totalPages: Math.ceil(total / limit),
-        hasPrev: page > 1,
-        hasNext: page * limit < total,
-        prevPage: page > 1 ? page - 1 : null,
-        nextPage: page * limit < total ? page + 1 : null,
+        totalPages: Math.max(1, Math.ceil(total / limit)),
+        hasPrevPage: page > 1,
+        hasNextPage: page * limit < total,
       },
     });
   } catch (error) {
@@ -1092,7 +1125,7 @@ const bulkDelete = async (req, res) => {
 module.exports = {
   getProducts,
   getProductById,
-  getFilteredProducts,
+  getProductsByFilters,
   getProductNames,
   getProductsBySearch,
   createProduct,

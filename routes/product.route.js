@@ -7,7 +7,7 @@ const {
   getProducts,
   getProductNames,
   getProductById,
-  getFilteredProducts,
+  getProductsByFilters,
   getProductsBySearch,
   createProduct,
   updateProduct,
@@ -31,8 +31,8 @@ router.get("/lists/inPreservedFlowers", getProductsInPreservedFlowers);
 router.get("/lists/inFriendsOccasion", getProductsForFriendsOccasion);
 router.get("/lists/inFeatured", getFeaturedProducts);
 router.get("/lists/inTopSold", getTopSoldProducts);
+router.get("/lists/filters", getProductsByFilters);
 router.get("/lists/:id", getProductById);
-router.get("/lists/filter", getFilteredProducts);
 router.get("/search", getProductsBySearch);
 router.get("/names", getProductNames);
 
