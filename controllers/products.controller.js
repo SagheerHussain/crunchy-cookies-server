@@ -58,26 +58,32 @@ const normalizeIdArray = (arr) => {
 const nameOrTitleFilter = (names = []) => ({
   $or: names.map((n) => ({
     $or: [
-      { name: { $regex: `^${String(n).trim()}$`, $options: 'i' } },
-      { title: { $regex: `^${String(n).trim()}$`, $options: 'i' } },
+      { name: { $regex: `^${String(n).trim()}$`, $options: "i" } },
+      { title: { $regex: `^${String(n).trim()}$`, $options: "i" } },
     ],
   })),
 });
 
 // fetch SubCategory ids by names
 async function subCategoryIdsByNames(names = []) {
-  const docs = await SubCategory.find(nameOrTitleFilter(names)).select('_id').lean();
+  const docs = await SubCategory.find(nameOrTitleFilter(names))
+    .select("_id")
+    .lean();
   return docs.map((d) => d._id);
 }
 
 // fetch Occasion id(s) by a single name (or array)
 async function occasionIdsByNames(names = []) {
-  const docs = await Occasion.find(nameOrTitleFilter(names)).select('_id').lean();
+  const docs = await Occasion.find(nameOrTitleFilter(names))
+    .select("_id")
+    .lean();
   return docs.map((d) => d._id);
 }
 
 async function recipientIdsByNames(names = []) {
-  const docs = await Recipient.find(nameOrTitleFilter(names)).select('_id').lean();
+  const docs = await Recipient.find(nameOrTitleFilter(names))
+    .select("_id")
+    .lean();
   return docs.map((d) => d._id);
 }
 
@@ -387,11 +393,13 @@ const getProductNames = async (req, res) => {
 const getProductsInFlowerInVases = async (req, res) => {
   try {
     const { page, limit, skip } = getPagination(req.query);
-    const catIds = await subCategoryIdsByNames(['flowers in vases']);
+    const catIds = await subCategoryIdsByNames(["flowers in vases"]);
 
     const [products, total] = await Promise.all([
       Product.find({ categories: { $in: catIds } })
-        .populate('brand categories type occasions recipients colors packagingOption suggestedProducts')
+        .populate(
+          "brand categories type occasions recipients colors packagingOption suggestedProducts"
+        )
         .skip(skip)
         .limit(limit)
         .lean(),
@@ -400,10 +408,12 @@ const getProductsInFlowerInVases = async (req, res) => {
 
     return res.status(200).json({
       success: true,
-      message: 'Products (Flower in vases)',
+      message: "Products (Flower in vases)",
       data: products,
       meta: {
-        page, limit, total,
+        page,
+        limit,
+        total,
         totalPages: Math.ceil(total / limit),
         hasPrev: page > 1,
         hasNext: page * limit < total,
@@ -427,7 +437,9 @@ const getTopSoldProducts = async (req, res) => {
         .sort({ totalPieceSold: -1, createdAt: -1 })
         .skip(skip)
         .limit(limit)
-        .populate("brand categories type occasions recipients colors packagingOption suggestedProducts")
+        .populate(
+          "brand categories type occasions recipients colors packagingOption suggestedProducts"
+        )
         .lean(),
       Product.countDocuments({}), // total universe for top-sold list
     ]);
@@ -457,13 +469,15 @@ const getTopSoldProducts = async (req, res) => {
 const getProductsInChocolatesOrHandBouquets = async (req, res) => {
   try {
     const { page, limit, skip } = getPagination(req.query);
-    const catIds = await subCategoryIdsByNames(['chocolates', 'hand bouquets']);
+    const catIds = await subCategoryIdsByNames(["chocolates", "hand bouquets"]);
 
     const query = { categories: { $in: catIds } };
 
     const [products, total] = await Promise.all([
       Product.find(query)
-        .populate('brand categories type occasions recipients colors packagingOption suggestedProducts')
+        .populate(
+          "brand categories type occasions recipients colors packagingOption suggestedProducts"
+        )
         .skip(skip)
         .limit(limit)
         .lean(),
@@ -472,10 +486,12 @@ const getProductsInChocolatesOrHandBouquets = async (req, res) => {
 
     return res.status(200).json({
       success: true,
-      message: 'Products (Chocolates OR Hand Bouquets)',
+      message: "Products (Chocolates OR Hand Bouquets)",
       data: products,
       meta: {
-        page, limit, total,
+        page,
+        limit,
+        total,
         totalPages: Math.ceil(total / limit),
         hasPrev: page > 1,
         hasNext: page * limit < total,
@@ -493,13 +509,15 @@ const getProductsInChocolatesOrHandBouquets = async (req, res) => {
 const getProductsForFriendsOccasion = async (req, res) => {
   try {
     const { page, limit, skip } = getPagination(req.query);
-    const recIds = await recipientIdsByNames(['friends']);
+    const recIds = await recipientIdsByNames(["friends"]);
 
     const query = { recipients: { $in: recIds } };
 
     const [products, total] = await Promise.all([
       Product.find(query)
-        .populate('brand categories type occasions recipients colors packagingOption suggestedProducts')
+        .populate(
+          "brand categories type occasions recipients colors packagingOption suggestedProducts"
+        )
         .skip(skip)
         .limit(limit)
         .lean(),
@@ -508,10 +526,12 @@ const getProductsForFriendsOccasion = async (req, res) => {
 
     return res.status(200).json({
       success: true,
-      message: 'Products (Occasion: Friends)',
+      message: "Products (Occasion: Friends)",
       data: products,
       meta: {
-        page, limit, total,
+        page,
+        limit,
+        total,
         totalPages: Math.ceil(total / limit),
         hasPrev: page > 1,
         hasNext: page * limit < total,
@@ -533,7 +553,9 @@ const getFeaturedProducts = async (req, res) => {
 
     const [products, total] = await Promise.all([
       Product.find(query)
-        .populate('brand categories type occasions recipients colors packagingOption suggestedProducts')
+        .populate(
+          "brand categories type occasions recipients colors packagingOption suggestedProducts"
+        )
         .skip(skip)
         .limit(limit)
         .lean(),
@@ -542,10 +564,12 @@ const getFeaturedProducts = async (req, res) => {
 
     return res.status(200).json({
       success: true,
-      message: 'Featured products',
+      message: "Featured products",
       data: products,
       meta: {
-        page, limit, total,
+        page,
+        limit,
+        total,
         totalPages: Math.ceil(total / limit),
         hasPrev: page > 1,
         hasNext: page * limit < total,
@@ -562,13 +586,15 @@ const getFeaturedProducts = async (req, res) => {
 const getProductsInPerfumes = async (req, res) => {
   try {
     const { page, limit, skip } = getPagination(req.query);
-    const catIds = await subCategoryIdsByNames(['perfumes']);
+    const catIds = await subCategoryIdsByNames(["perfumes"]);
 
     const query = { categories: { $in: catIds } };
 
     const [products, total] = await Promise.all([
       Product.find(query)
-        .populate('brand categories type occasions recipients colors packagingOption suggestedProducts')
+        .populate(
+          "brand categories type occasions recipients colors packagingOption suggestedProducts"
+        )
         .skip(skip)
         .limit(limit)
         .lean(),
@@ -577,10 +603,12 @@ const getProductsInPerfumes = async (req, res) => {
 
     return res.status(200).json({
       success: true,
-      message: 'Products (Perfumes)',
+      message: "Products (Perfumes)",
       data: products,
       meta: {
-        page, limit, total,
+        page,
+        limit,
+        total,
         totalPages: Math.ceil(total / limit),
         hasPrev: page > 1,
         hasNext: page * limit < total,
@@ -597,13 +625,15 @@ const getProductsInPerfumes = async (req, res) => {
 const getProductsInPreservedFlowers = async (req, res) => {
   try {
     const { page, limit, skip } = getPagination(req.query);
-    const catIds = await subCategoryIdsByNames(['preserved flowers']);
+    const catIds = await subCategoryIdsByNames(["preserved flowers"]);
 
     const query = { categories: { $in: catIds } };
 
     const [products, total] = await Promise.all([
       Product.find(query)
-        .populate('brand categories type occasions recipients colors packagingOption suggestedProducts')
+        .populate(
+          "brand categories type occasions recipients colors packagingOption suggestedProducts"
+        )
         .skip(skip)
         .limit(limit)
         .lean(),
@@ -612,10 +642,12 @@ const getProductsInPreservedFlowers = async (req, res) => {
 
     return res.status(200).json({
       success: true,
-      message: 'Products (Preserved Flowers)',
+      message: "Products (Preserved Flowers)",
       data: products,
       meta: {
-        page, limit, total,
+        page,
+        limit,
+        total,
         totalPages: Math.ceil(total / limit),
         hasPrev: page > 1,
         hasNext: page * limit < total,
@@ -625,6 +657,131 @@ const getProductsInPreservedFlowers = async (req, res) => {
     });
   } catch (err) {
     return res.status(500).json({ success: false, error: err.message });
+  }
+};
+
+// Search Products
+const getProductsBySearch = async (req, res) => {
+  try {
+    const escapeRegex = (s = "") => s.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
+
+    const {
+      q = "",
+      category = "",
+      occasion = "",
+      page = 1,
+      limit = 12,
+      sort = "newest",
+    } = req.query;
+
+    const pageNum = Math.max(parseInt(page, 10) || 1, 1);
+    const pageSize = Math.min(Math.max(parseInt(limit, 10) || 12, 1), 100);
+
+    // Build base filter
+    const filter = { isActive: true };
+
+    // --- Explicit category/occasion filters via slug or id ---
+    const parseList = (v) =>
+      String(v || "")
+        .split(",")
+        .map((s) => s.trim())
+        .filter(Boolean);
+
+    const categoryKeys = parseList(category);
+    const occasionKeys = parseList(occasion);
+
+    // Resolve category IDs if provided
+    if (categoryKeys.length) {
+      const catIds = await SubCategory.find({
+        $or: [
+          { _id: { $in: categoryKeys.filter(mongoose.isValidObjectId) } },
+          { slug: { $in: categoryKeys.map((s) => s.toLowerCase()) } },
+        ],
+      }).select("_id");
+      if (catIds.length) filter.categories = { $in: catIds.map((d) => d._id) };
+      else return res.json({ total: 0, page: pageNum, pages: 0, items: [] });
+    }
+
+    // Resolve occasion IDs if provided
+    if (occasionKeys.length) {
+      const occIds = await Occasion.find({
+        $or: [
+          { _id: { $in: occasionKeys.filter(mongoose.isValidObjectId) } },
+          { slug: { $in: occasionKeys.map((s) => s.toLowerCase()) } },
+        ],
+      }).select("_id");
+      if (occIds.length) filter.occasions = { $in: occIds.map((d) => d._id) };
+      else return res.json({ total: 0, page: pageNum, pages: 0, items: [] });
+    }
+
+    // --- Free-text search across product fields + related names ---
+    const or = [];
+    if (q && q.trim().length) {
+      const rx = new RegExp(escapeRegex(q.trim()), "i");
+
+      // 1) Product own fields (EN + AR)
+      or.push(
+        { title: rx },
+        { ar_title: rx },
+        { description: rx },
+        { ar_description: rx }
+      );
+
+      // 2) Match category by name and use ids in product filter
+      const [catsByName, occsByName] = await Promise.all([
+        SubCategory.find({
+          $or: [{ name: rx }, { ar_name: rx }, { slug: rx }],
+        }).select("_id"),
+        Occasion.find({
+          $or: [{ name: rx }, { ar_name: rx }, { slug: rx }],
+        }).select("_id"),
+      ]);
+
+      if (catsByName.length) {
+        or.push({ categories: { $in: catsByName.map((d) => d._id) } });
+      }
+      if (occsByName.length) {
+        or.push({ occasions: { $in: occsByName.map((d) => d._id) } });
+      }
+    }
+
+    const finalFilter = or.length ? { $and: [filter, { $or: or }] } : filter;
+
+    // Sorting
+    const sortMap = {
+      newest: { createdAt: -1 },
+      price_asc: { price: 1 },
+      price_desc: { price: -1 },
+      popular: { totalPieceSold: -1, createdAt: -1 },
+    };
+    const sortStage = sortMap[sort] || sortMap.newest;
+
+    // Query + pagination
+    const [items, total] = await Promise.all([
+      Product.find(finalFilter)
+        .populate([
+          { path: "categories", select: "name ar_name slug parent" },
+          { path: "occasions", select: "name ar_name slug" },
+          { path: "brand", select: "name slug" },
+        ])
+        .sort(sortStage)
+        .skip((pageNum - 1) * pageSize)
+        .limit(pageSize)
+        .lean(),
+      Product.countDocuments(finalFilter),
+    ]);
+
+    const pages = Math.ceil(total / pageSize);
+
+    return res.json({
+      total,
+      page: pageNum,
+      pages,
+      items,
+    });
+  } catch (error) {
+    console.error("getProductsBySearch error:", error);
+    return res.status(500).json({ success: false, message: error.message });
   }
 };
 
@@ -707,13 +864,11 @@ const createProduct = async (req, res) => {
     if (!doc.stockStatus) doc.stockStatus = stockStatus;
 
     const created = await Product.create(doc);
-    return res
-      .status(201)
-      .json({
-        success: true,
-        message: "Product created successfully",
-        data: created,
-      });
+    return res.status(201).json({
+      success: true,
+      message: "Product created successfully",
+      data: created,
+    });
   } catch (err) {
     console.error(err);
     return res.status(500).json({ success: false, error: err.message });
@@ -892,13 +1047,11 @@ const updateProduct = async (req, res) => {
       runValidators: true,
     });
 
-    return res
-      .status(200)
-      .json({
-        success: true,
-        message: "Product updated successfully",
-        data: updated,
-      });
+    return res.status(200).json({
+      success: true,
+      message: "Product updated successfully",
+      data: updated,
+    });
   } catch (err) {
     console.error(err);
     return res.status(500).json({ success: false, error: err.message });
@@ -941,6 +1094,7 @@ module.exports = {
   getProductById,
   getFilteredProducts,
   getProductNames,
+  getProductsBySearch,
   createProduct,
   updateProduct,
   deleteProduct,
