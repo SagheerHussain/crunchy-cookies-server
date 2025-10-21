@@ -194,6 +194,8 @@ async function resolveIds(Model, values) {
   );
 }
 
+const escapeRegex = (s) => s.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
+
 // Optional sort mapping
 function buildSort(sortKey) {
   switch (sortKey) {
@@ -341,19 +343,21 @@ const getProductsByFilters = async (req, res) => {
     const brandQ = toList(req.query.brand);
     const recQ = toList(req.query.recipient);
 
+    // free-text search (accept q or search)
+    const rawSearch = (req.query.q ?? req.query.search ?? "").trim();
+
     const page = Math.max(1, parseInt(`${req.query.page || 1}`, 10));
     const limit = Math.max(1, parseInt(`${req.query.limit || 10}`, 10)); // default 10
     const skip = (page - 1) * limit;
     const sort = buildSort(req.query.sort);
 
     // Resolve to _ids (handle slugs or ids)
-    const [subCategoryIds, occasionIds, brandIds, recipientIds] =
-      await Promise.all([
-        resolveIds(SubCategory, subCatQ),
-        resolveIds(Occasion, occQ),
-        resolveIds(Brand, brandQ),
-        resolveIds(Recipient, recQ),
-      ]);
+    const [subCategoryIds, occasionIds, brandIds, recipientIds] = await Promise.all([
+      resolveIds(SubCategory, subCatQ),
+      resolveIds(Occasion, occQ),
+      resolveIds(Brand, brandQ),
+      resolveIds(Recipient, recQ),
+    ]);
 
     // Build filter
     const filter = { isActive: true }; // only active products by default
@@ -361,6 +365,17 @@ const getProductsByFilters = async (req, res) => {
     if (occasionIds.length) filter.occasions = { $in: occasionIds };
     if (brandIds.length) filter.brand = { $in: brandIds };
     if (recipientIds.length) filter.recipients = { $in: recipientIds };
+
+    // Add free-text search across title/ar_title/description/ar_description
+    if (rawSearch) {
+      const rx = new RegExp(escapeRegex(rawSearch), "i");
+      filter.$or = [
+        { title: rx },
+        { ar_title: rx },
+        { description: rx },
+        { ar_description: rx },
+      ];
+    }
 
     // Count + query
     const [total, items] = await Promise.all([
@@ -375,7 +390,7 @@ const getProductsByFilters = async (req, res) => {
             path: "categories",
             select: "name ar_name slug parent",
             populate: {
-              path: "parent", // 👈 this is your Category reference
+              path: "parent",
               select: "name ar_name slug",
             },
           },
