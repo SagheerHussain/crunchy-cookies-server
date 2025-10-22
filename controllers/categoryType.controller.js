@@ -43,8 +43,8 @@ const getCategoryTypeById = async (req, res) => {
 /* -------------------------------- POST ----------------------------- */
 const createCategoryType = async (req, res) => {
   try {
-    const { name, ar_name, parent } = req.body;
-    if (!name || !ar_name || !parent) {
+    const { name, ar_name, parent, totalStock, totalPieceUsed } = req.body;
+    if (!name || !ar_name || !parent || !totalStock || !totalPieceUsed) {
       return res
         .status(200)
         .json({ success: false, message: "Category Type not found" });
@@ -58,11 +58,17 @@ const createCategoryType = async (req, res) => {
     .replace(/^-|-$/g, "");    // trim leading/trailing -
 
 
+    const remainingStock = totalStock - totalPieceUsed;
+
+
     const categoryType = await CategoryType.create({
       name,
       ar_name,
       slug,
       parent,
+      totalStock,
+      remainingStock,
+      totalPieceUsed,
       isActive: true,
     });
 
@@ -80,7 +86,7 @@ const createCategoryType = async (req, res) => {
 const updateCategoryType = async (req, res) => {
   try {
     const { id } = req.params;
-    const { name, ar_name, parent, isActive } = req.body;
+    const { name, ar_name, parent, isActive, totalStock, totalPieceUsed } = req.body;
 
     const categoryTypeData = await CategoryType.findById({ _id: id }).lean();
     if (!categoryTypeData) {
@@ -98,9 +104,11 @@ const updateCategoryType = async (req, res) => {
     .replace(/^-|-$/g, "")    // trim leading/trailing -
     : categoryTypeData?.slug;
 
+    const remainingStock = totalStock - totalPieceUsed;
+
     const categoryType = await CategoryType.findByIdAndUpdate(
       { _id: id },
-      { name, ar_name, slug, parent, isActive }
+      { name, ar_name, slug, parent, isActive, totalStock, remainingStock, totalPieceUsed }
     );
 
     return res.status(201).json({
