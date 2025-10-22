@@ -10,6 +10,7 @@ const categoryTypeSchema = new mongoose.Schema(
     totalStock: { type: Number },
     totalPieceUsed: { type: Number },
     remainingStock: { type: Number },
+    stockStatus: { type: String, enum: ["in_stock", "out_of_stock", "low_stock"], default: "in_stock" },
     isActive: { type: Boolean, default: true },
   },
   { timestamps: true }

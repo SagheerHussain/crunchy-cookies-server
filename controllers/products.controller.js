@@ -854,8 +854,9 @@ const createProduct = async (req, res) => {
       stockStatus: b.stockStatus,
       brand: normalizeId(b.brand),
       categories: normalizeIdArray(pickArray(b, "categories")),
-      type: normalizeId(b.type),
+      totalPieceCarry: toNum(b.totalPieceCarry),
       occasions: normalizeIdArray(pickArray(b, "occasions")),
+      type: normalizeIdArray(pickArray(b, "type")),
       recipients: normalizeIdArray(pickArray(b, "recipients")),
       colors: normalizeIdArray(pickArray(b, "colors")),
       suggestedProducts: normalizeIdArray(pickArray(b, "suggestedProducts")),
@@ -940,6 +941,7 @@ const updateProduct = async (req, res) => {
     if ("discount" in b) toUpdate.discount = toNum(b.discount, 0);
     if ("currency" in b) toUpdate.currency = b.currency;
     if ("totalStocks" in b) toUpdate.totalStocks = toNum(b.totalStocks);
+    if ("totalPieceCarry" in b) toUpdate.totalPieceCarry = toNum(b.totalPieceCarry);
     if ("remainingStocks" in b)
       toUpdate.remainingStocks = toNum(b.remainingStocks);
     if ("stockStatus" in b) toUpdate.stockStatus = b.stockStatus;
@@ -955,11 +957,11 @@ const updateProduct = async (req, res) => {
       if (v !== undefined) toUpdate.brand = v;
     }
 
-    if (b.unset_type) toUnset.type = "";
-    else if ("type" in b) {
-      const v = normalizeId(b.type);
-      if (v !== undefined) toUpdate.type = v;
-    }
+    // if (b.unset_type) toUnset.type = "";
+    // else if ("type" in b) {
+    //   const v = normalizeId(b.type);
+    //   if (v !== undefined) toUpdate.type = v;
+    // }
 
     if (b.unset_packagingOption) toUnset.packagingOption = "";
     else if ("packagingOption" in b) {
@@ -979,6 +981,7 @@ const updateProduct = async (req, res) => {
       "ar_qualities",
       "categories",
       "occasions",
+      "type",
       "recipients",
       "colors",
       "suggestedProducts",

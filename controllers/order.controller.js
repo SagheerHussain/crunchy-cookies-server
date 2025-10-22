@@ -264,8 +264,6 @@ const createOrder = async (req, res) => {
       appliedCoupon: _appliedCoupon, // alias support for your existing frontend
     } = req.body;
 
-    console.log(req.body)
-
     if (
       !code ||
       !user ||
