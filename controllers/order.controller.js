@@ -10,6 +10,7 @@ const Product = require("../models/Product.model");
 const OngoingOrder = require("../models/OngoingOrder.model");
 const OrderHistory = require("../models/OrderHistory.model");
 const OrderCancel = require("../models/OrderCancel.model");
+const CategoryType = require("../models/CategoryType.model");
 
 const { pushOrderToSheet } = require("../services/orderToSheet");
 
@@ -31,13 +32,15 @@ const money = (n) =>
 // ⬇️ NEW: keep the other collections in sync with the order's status
 async function reflectOrderState(orderDocOrLean) {
   if (!orderDocOrLean) return;
-  const order = orderDocOrLean.toObject ? orderDocOrLean.toObject() : orderDocOrLean;
+  const order = orderDocOrLean.toObject
+    ? orderDocOrLean.toObject()
+    : orderDocOrLean;
 
   const orderId = order._id;
   const status = String(order.status || "").toLowerCase();
 
-  const isOngoing  = ["pending", "confirmed", "shipped"].includes(status);
-  const isHistory  = ["delivered", "cancelled", "returned"].includes(status);
+  const isOngoing = ["pending", "confirmed", "shipped"].includes(status);
+  const isHistory = ["delivered", "cancelled", "returned"].includes(status);
   const isCanceled = ["cancelled", "returned"].includes(status);
 
   /* ------------------------ Ongoing Orders ------------------------ */
@@ -282,7 +285,10 @@ const createOrder = async (req, res) => {
     const userOngoingOrder = await OngoingOrder.findOne({ user });
 
     if (userOngoingOrder) {
-      return res.status(200).json({ success: true, message: "Please place your order after delivered your current order." })
+      return res.status(200).json({
+        success: true,
+        message: "Please place your order after delivered your current order.",
+      });
     }
 
     // 1) Build order items from product prices
@@ -397,6 +403,129 @@ const createOrder = async (req, res) => {
     };
 
     const [order] = await Order.create([orderPayload], { session });
+
+    for (const item of createdItems) {
+      const orderItem = await OrderItem.findById(item._id)
+        .populate(
+          "products",
+          "_id remainingStocks totalStocks totalPieceSold totalPieceCarry type"
+        )
+        .session(session);
+
+      // ✅ SINGLE product check (no .length)
+      if (!orderItem || !orderItem.products) {
+        await session.abortTransaction();
+        session.endSession();
+        return res
+          .status(400)
+          .json({ success: false, message: "Order item has no products" });
+      }
+
+      const qty = Number(item.quantity || 1);
+      const product = orderItem.products; // populated single product doc
+
+      // product stock check
+      if ((product.remainingStocks || 0) < qty) {
+        await session.abortTransaction();
+        session.endSession();
+        return res.status(400).json({
+          success: false,
+          message: `Insufficient stock for product ${product._id}`,
+        });
+      }
+
+      // category type piece check, if any
+      if (Array.isArray(product.type) && product.type.length > 0) {
+        const pieceCarry = Number(product.totalPieceCarry || 0);
+        const totalDeduct = qty * pieceCarry;
+
+        if (totalDeduct > 0) {
+          const types = await CategoryType.find({ _id: { $in: product.type } })
+            .select("_id remainingStock")
+            .session(session);
+
+          for (const t of types) {
+            if ((t.remainingStock || 0) < totalDeduct) {
+              await session.abortTransaction();
+              session.endSession();
+              return res.status(400).json({
+                success: false,
+                message: `Insufficient category type stock for type ${t._id}`,
+              });
+            }
+          }
+        }
+      }
+    }
+
+    for (const item of createdItems) {
+      const orderItem = await OrderItem.findById(item._id)
+        .populate(
+          "products",
+          "_id remainingStocks totalStocks totalPieceSold totalPieceCarry type"
+        )
+        .session(session);
+
+      const qty = Number(item.quantity || 1);
+      const product = orderItem.products; // single product doc
+
+      // Product stock decrement + sold increment
+      const newRemaining = Math.max(0, (product.remainingStocks || 0) - qty);
+
+      let stockStatus = "in_stock";
+      if (newRemaining <= 0) stockStatus = "out_of_stock";
+      else if (
+        product.totalStocks &&
+        newRemaining < product.totalStocks * 0.2
+      ) {
+        stockStatus = "low_stock";
+      }
+
+      await Product.findByIdAndUpdate(
+        product._id,
+        {
+          $set: { remainingStocks: newRemaining, stockStatus },
+          $inc: { totalPieceSold: qty },
+        },
+        { session }
+      );
+
+      // CategoryType deduction (quantity × totalPieceCarry)
+      if (Array.isArray(product.type) && product.type.length > 0) {
+        const pieceCarry = Number(product.totalPieceCarry || 0);
+        const totalDeduct = qty * pieceCarry;
+
+        if (totalDeduct > 0) {
+          const types = await CategoryType.find({
+            _id: { $in: product.type },
+          }).session(session);
+
+          for (const ct of types) {
+            const nextRemaining = Math.max(
+              0,
+              (ct.remainingStock || 0) - totalDeduct
+            );
+            let typeStatus = "in_stock";
+            if (nextRemaining <= 0) typeStatus = "out_of_stock";
+            else if (ct.totalStock && nextRemaining < ct.totalStock * 0.2) {
+              typeStatus = "low_stock";
+            }
+
+            await CategoryType.findByIdAndUpdate(
+              ct._id,
+              {
+                $set: {
+                  remainingStock: nextRemaining,
+                  stockStatus: typeStatus,
+                },
+                $inc: { totalPieceUsed: totalDeduct },
+              },
+              { session }
+            );
+          }
+        }
+      }
+    }
 
     await session.commitTransaction();
     session.endSession();
@@ -624,7 +753,10 @@ const bulkDelete = async (req, res) => {
     try {
       await OngoingOrder.deleteMany({});
     } catch (err) {
-      console.error("[Reflect:bulkDelete] ongoing cleanup failed:", err?.message || err);
+      console.error(
+        "[Reflect:bulkDelete] ongoing cleanup failed:",
+        err?.message || err
+      );
     }
 
     return res.status(200).json({
