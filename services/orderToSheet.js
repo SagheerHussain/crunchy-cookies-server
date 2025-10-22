@@ -88,7 +88,7 @@ function buildRow(order) {
     safeSheetText(receiverPhone),
     money(calcSubtotal(order)),
     calcDiscountPercent(order),
-    money(order?.deliveryCharges || order?.shippingAmount || 0), // ✅ matches "Delivery Charges"
+    money(order?.taxAmount || 0), // ✅ matches "Delivery Charges"
     order?.appliedCoupon?.code || order?.appliedCoupon || "",
     money(calcGrandTotal(order)),
     order?.cardMessage || "",
