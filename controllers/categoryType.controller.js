@@ -44,6 +44,7 @@ const getCategoryTypeById = async (req, res) => {
 const createCategoryType = async (req, res) => {
   try {
     const { name, ar_name, parent, totalStock, totalPieceUsed } = req.body;
+
     if (!name || !ar_name || !parent || !totalStock || !totalPieceUsed) {
       return res
         .status(200)
@@ -60,7 +61,6 @@ const createCategoryType = async (req, res) => {
 
     const remainingStock = totalStock - totalPieceUsed;
 
-
     const categoryType = await CategoryType.create({
       name,
       ar_name,
@@ -69,6 +69,7 @@ const createCategoryType = async (req, res) => {
       totalStock,
       remainingStock,
       totalPieceUsed,
+      stockStatus: remainingStock > 0 ? "in_stock" : "out_of_stock",
       isActive: true,
     });
 
