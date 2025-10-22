@@ -618,24 +618,11 @@ const deleteOrder = async (req, res) => {
 
 const bulkDelete = async (req, res) => {
   try {
-    const ids =
-      Array.isArray(req.body?.ids) && req.body.ids.length
-        ? req.body.ids
-        : req.params?.ids
-        ? String(req.params.ids).split(",")
-        : [];
-
-    if (!ids.length) {
-      return res
-        .status(400)
-        .json({ success: false, message: "ids array is required" });
-    }
-
-    const result = await Order.deleteMany({ _id: { $in: ids } });
+    const result = await Order.deleteMany({});
 
     // Optional: cleanup OngoingOrder for these ids
     try {
-      await OngoingOrder.deleteMany({ order: { $in: ids } });
+      await OngoingOrder.deleteMany({});
     } catch (err) {
       console.error("[Reflect:bulkDelete] ongoing cleanup failed:", err?.message || err);
     }
