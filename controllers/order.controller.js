@@ -186,9 +186,10 @@ const getOrders = async (req, res) => {
       .populate("user", "firstName lastName email")
       .populate("appliedCoupon", "code type value")
       .populate("shippingAddress")
+      .populate("recipients.address") // NEW
       .populate({
         path: "items",
-        populate: { path: "products", model: "Product" }, // correct: products[]
+        populate: { path: "product", model: "Product" },
       })
       .lean();
 
@@ -207,11 +208,13 @@ const getOrderById = async (req, res) => {
       .populate("user", "firstName lastName email")
       .populate("appliedCoupon", "code type value")
       .populate("shippingAddress")
+      .populate("recipients.address") // NEW
       .populate({
         path: "items",
-        populate: { path: "products", model: "Product" },
+        populate: { path: "product", model: "Product" },
       })
       .lean();
+
     if (!order) {
       return res
         .status(404)
@@ -232,9 +235,10 @@ const getOrdersByUser = async (req, res) => {
       .populate("user", "firstName lastName email")
       .populate("appliedCoupon", "code type value")
       .populate("shippingAddress")
+      .populate("recipients.address") // NEW
       .populate({
         path: "items",
-        populate: { path: "products", model: "Product" },
+        populate: { path: "product", model: "Product" },
       })
       .lean();
 
@@ -247,16 +251,18 @@ const getOrdersByUser = async (req, res) => {
 };
 
 /* -------------------------------- POST ----------------------------- */
-// Accepts either `couponCode` OR `appliedCoupon` (string code) in body
 const createOrder = async (req, res) => {
   const session = await mongoose.startSession();
   session.startTransaction();
   try {
+    console.log(req.body);
     const {
       code,
       user,
+      senderPhone,
+      recipients: rawRecipients = [], // NEW
       items,
-      shippingAddress,
+      shippingAddress, // keep for backward compat / single recipient
       deliveryInstructions,
       ar_deliveryInstructions,
       cardMessage,
@@ -264,7 +270,7 @@ const createOrder = async (req, res) => {
       cardImage,
       taxAmount,
       couponCode: _couponCode,
-      appliedCoupon: _appliedCoupon, // alias support for your existing frontend
+      appliedCoupon: _appliedCoupon,
     } = req.body;
 
     if (
@@ -272,27 +278,32 @@ const createOrder = async (req, res) => {
       !user ||
       !Array.isArray(items) ||
       items.length === 0 ||
-      !shippingAddress
+      !senderPhone
     ) {
       await session.abortTransaction();
       session.endSession();
       return res.status(400).json({
         success: false,
-        message: "Please provide complete order details",
+        message: "Please provide code, user, senderPhone, items",
       });
     }
 
+    // Only one ongoing order per user
     const userOngoingOrder = await OngoingOrder.findOne({ user });
-
     if (userOngoingOrder) {
+      await session.abortTransaction();
+      session.endSession();
       return res.status(200).json({
         success: true,
-        message: "Please place your order after delivered your current order.",
+        message:
+          "Please place your order after your current order is delivered.",
       });
     }
 
-    // 1) Build order items from product prices
-    const prices = await priceMapForProducts(items);
+    // ---------- Prices ----------
+    const prices = await priceMapForProducts(
+      items.map((i) => ({ product: i.product }))
+    );
     if (prices.size === 0) {
       await session.abortTransaction();
       session.endSession();
@@ -303,8 +314,9 @@ const createOrder = async (req, res) => {
 
     let subtotal = 0;
     let totalQty = 0;
-    const orderItemDocs = [];
 
+    // We'll build orderItemDocs later (after we know recipientIds)
+    // For now just validate products & compute totals
     for (const it of items) {
       const pid = String(it.product);
       const qty = Math.max(1, Number(it.quantity || 1));
@@ -316,32 +328,24 @@ const createOrder = async (req, res) => {
           .status(400)
           .json({ success: false, message: "Invalid product in items" });
       }
-      const lineSubtotal = unitPrice * qty;
-      subtotal += lineSubtotal;
+      subtotal += unitPrice * qty;
       totalQty += qty;
-
-      // Match your OrderItems.model
-      orderItemDocs.push({
-        products: [it.product],
-        quantity: qty,
-        discountForProducts: 0,
-        totalAmount: money(lineSubtotal),
-      });
     }
 
     subtotal = money(subtotal);
 
-    // 2) Coupon validation & compute discount
+    // ---------- Coupon ----------
     let coupon = null;
     let discountAmount = 0;
     const incomingCoupon = (_couponCode || _appliedCoupon || "")
       .toString()
       .trim();
 
-    if (incomingCoupon.length > 0) {
+    if (incomingCoupon) {
       coupon = await Coupon.findOne({
         code: incomingCoupon.toUpperCase(),
       }).session(session);
+
       const invalidMsg = await validateCouponWindowAndLimits(
         { coupon, userId: user, subtotal },
         session
@@ -363,113 +367,239 @@ const createOrder = async (req, res) => {
       discountAmount = money(discountAmount);
     }
 
-    // 3) Tax & final totals
     const tax = money(Number(taxAmount || 0));
     const total = money(subtotal - discountAmount + tax);
 
-    // 4) Persist order items & address
-    const createdItems = await OrderItem.insertMany(orderItemDocs, { session });
+    // ---------- Recipients ----------
+    // If frontend sends none, we fallback to single-recipient via shippingAddress.
+    const preparedRecipients = [];
 
-    let addressId = null;
-    if (isValidObjectId(shippingAddress)) {
-      addressId = shippingAddress;
-    } else {
-      const createdAddress = await Address.create([shippingAddress], {
-        session,
+    if (Array.isArray(rawRecipients) && rawRecipients.length > 0) {
+      for (let i = 0; i < rawRecipients.length; i++) {
+        const r = rawRecipients[i] || {};
+        if (!r.phone) {
+          throw new Error(`Recipient ${i + 1}: phone is required`);
+        }
+
+        // Address: can be id or object
+        let addressId = null;
+        if (r.address) {
+          if (typeof r.address === "string" && isValidObjectId(r.address)) {
+            addressId = r.address;
+          } else {
+            const [addr] = await Address.create(
+              [
+                {
+                  senderPhone: senderPhone,
+                  receiverPhone: r.phone,
+                  // add extra fields here if your Address schema extends later
+                },
+              ],
+              { session }
+            );
+            addressId = addr._id;
+          }
+        }
+
+        preparedRecipients.push({
+          tempId: r.tempId || `r${i + 1}`,
+          payload: {
+            label: r.label || `Recipient ${i + 1}`,
+            name: r.name || null,
+            phone: r.phone,
+            address: addressId,
+            cardMessage: r.cardMessage || null,
+            cardImage: r.cardImage || null,
+            deliveryInstructions: r.deliveryInstructions || null,
+          },
+        });
+      }
+    } else if (shippingAddress) {
+      // backward compatible single recipient
+      let addressId = null;
+      if (isValidObjectId(shippingAddress)) {
+        addressId = shippingAddress;
+      } else {
+        const [addr] = await Address.create([shippingAddress], {
+          session,
+        });
+        addressId = addr._id;
+      }
+
+      preparedRecipients.push({
+        tempId: "r1",
+        payload: {
+          label: "Recipient 1",
+          phone: senderPhone, // or shippingAddress.receiverPhone
+          address: addressId,
+          cardMessage: cardMessage || null,
+          cardImage: cardImage || null,
+          deliveryInstructions: deliveryInstructions || null,
+        },
       });
-      addressId = createdAddress[0]._id;
+    } else {
+      throw new Error("At least one recipient or shippingAddress is required");
     }
 
-    // 5) Create order
-    const orderPayload = {
-      code,
-      user,
-      items: createdItems.map((d) => d._id),
-      totalItems: totalQty,
-      subtotalAmount: subtotal,
-      discountAmount,
-      taxAmount: tax,
-      grandTotal: total,
-      appliedCoupon: coupon ? coupon._id : undefined,
-      shippingAddress: addressId,
-      deliveryInstructions,
-      ar_deliveryInstructions,
-      cardMessage,
-      ar_cardMessage,
-      cardImage,
-      placedAt: new Date(),
-      status: "pending",
-      payment: "pending",
-    };
+    // ---------- Create Order (without items yet) ----------
+    const [orderDoc] = await Order.create(
+      [
+        {
+          code,
+          user,
+          senderPhone,
+          recipients: preparedRecipients.map((r) => r.payload),
+          items: [],
+          totalItems: items?.length,
+          subtotalAmount: subtotal,
+          discountAmount,
+          taxAmount: tax,
+          grandTotal: total,
+          appliedCoupon: coupon ? coupon._id : undefined,
+          // keep legacy fields for compatibility
+          shippingAddress: isValidObjectId(shippingAddress)
+            ? shippingAddress
+            : undefined,
+          deliveryInstructions,
+          ar_deliveryInstructions,
+          cardMessage,
+          ar_cardMessage,
+          cardImage,
+          placedAt: new Date(),
+          status: "pending",
+          payment: "pending",
+        },
+      ],
+      { session }
+    );
 
-    const [order] = await Order.create([orderPayload], { session });
+    // Map tempId -> real recipientId
+    const recipientIdByTemp = {};
+    orderDoc.recipients.forEach((rec, idx) => {
+      const tempId = preparedRecipients[idx].tempId;
+      recipientIdByTemp[tempId] = rec._id;
+    });
 
+    // ---------- Build OrderItems with allocations ----------
+    const orderItemDocs = [];
+
+    for (const it of items) {
+      const pid = String(it.product);
+      const qty = Math.max(1, Number(it.quantity || 1));
+      const unitPrice = Number(prices.get(pid) || 0);
+      const lineSubtotal = unitPrice * qty;
+
+      if (!unitPrice) {
+        throw new Error("Invalid product in items");
+      }
+
+      // allocations from frontend
+      let allocations = [];
+
+      if (Array.isArray(it.allocations) && it.allocations.length > 0) {
+        let sum = 0;
+        allocations = it.allocations.map((a) => {
+          const recId =
+            recipientIdByTemp[a.recipientTempId || a.recipientTempId];
+          if (!recId) {
+            throw new Error("Invalid recipientTempId in allocations");
+          }
+          const q = Number(a.quantity || 0);
+          if (q <= 0) {
+            throw new Error("Allocation quantity must be > 0");
+          }
+          sum += q;
+          return { recipientId: recId, quantity: q };
+        });
+        if (sum !== qty) {
+          throw new Error(
+            `Allocated quantity (${sum}) must equal item quantity (${qty})`
+          );
+        }
+      } else {
+        // default: all quantity to first recipient
+        const firstTempId = preparedRecipients[0].tempId;
+        allocations = [
+          {
+            recipientId: recipientIdByTemp[firstTempId],
+            quantity: qty,
+          },
+        ];
+      }
+
+      orderItemDocs.push({
+        order: orderDoc._id,
+        product: it.product,
+        quantity: qty,
+        allocations,
+        discountForProducts: 0,
+        totalAmount: money(lineSubtotal),
+      });
+    }
+
+    const createdItems = await OrderItem.insertMany(orderItemDocs, {
+      session,
+    });
+
+    // Attach items to order
+    orderDoc.items = createdItems.map((d) => d._id);
+    await orderDoc.save({ session });
+
+    // ---------- STOCK CHECKS (unchanged logic, just use createdItems) ----------
     for (const item of createdItems) {
       const orderItem = await OrderItem.findById(item._id)
         .populate(
-          "products",
+          "product",
           "_id remainingStocks totalStocks totalPieceSold totalPieceCarry type"
         )
         .session(session);
 
-      // ✅ SINGLE product check (no .length)
-      if (!orderItem || !orderItem.products) {
-        await session.abortTransaction();
-        session.endSession();
-        return res
-          .status(400)
-          .json({ success: false, message: "Order item has no products" });
+      if (!orderItem || !orderItem.product) {
+        throw new Error("Order item has no products");
       }
 
-      const qty = Number(item.quantity || 1);
-      const product = orderItem.products; // populated single product doc
+      const qty = Number(orderItem.quantity || 1);
+      const product = orderItem.product;
 
-      // product stock check
       if ((product.remainingStocks || 0) < qty) {
-        await session.abortTransaction();
-        session.endSession();
-        return res.status(400).json({
-          success: false,
-          message: `Insufficient stock for product ${product._id}`,
-        });
+        throw new Error(`Insufficient stock for product ${product._id}`);
       }
 
-      // category type piece check, if any
+      // CategoryType stock validation (same as your existing)
       if (Array.isArray(product.type) && product.type.length > 0) {
         const pieceCarry = Number(product.totalPieceCarry || 0);
         const totalDeduct = qty * pieceCarry;
 
         if (totalDeduct > 0) {
-          const types = await CategoryType.find({ _id: { $in: product.type } })
+          const types = await CategoryType.find({
+            _id: { $in: product.type },
+          })
             .select("_id remainingStock")
             .session(session);
 
           for (const t of types) {
             if ((t.remainingStock || 0) < totalDeduct) {
-              await session.abortTransaction();
-              session.endSession();
-              return res.status(400).json({
-                success: false,
-                message: `Insufficient category type stock for type ${t._id}`,
-              });
+              throw new Error(
+                `Insufficient category type stock for type ${t._id}`
+              );
             }
           }
         }
       }
     }
 
+    // ---------- STOCK DEDUCTION ----------
     for (const item of createdItems) {
       const orderItem = await OrderItem.findById(item._id)
         .populate(
-          "products",
+          "product",
           "_id remainingStocks totalStocks totalPieceSold totalPieceCarry type"
         )
         .session(session);
 
-      const qty = Number(item.quantity || 1);
-      const product = orderItem.products; // single product doc
+      const qty = Number(orderItem.quantity || 1);
+      const product = orderItem.product;
 
-      // Product stock decrement + sold increment
       const newRemaining = Math.max(0, (product.remainingStocks || 0) - qty);
 
       let stockStatus = "in_stock";
@@ -490,7 +620,7 @@ const createOrder = async (req, res) => {
         { session }
       );
 
-      // CategoryType deduction (quantity × totalPieceCarry)
+      // CategoryType deduction (unchanged)
       if (Array.isArray(product.type) && product.type.length > 0) {
         const pieceCarry = Number(product.totalPieceCarry || 0);
         const totalDeduct = qty * pieceCarry;
@@ -505,6 +635,7 @@ const createOrder = async (req, res) => {
               0,
               (ct.remainingStock || 0) - totalDeduct
             );
+
             let typeStatus = "in_stock";
             if (nextRemaining <= 0) typeStatus = "out_of_stock";
             else if (ct.totalStock && nextRemaining < ct.totalStock * 0.2) {
@@ -530,25 +661,24 @@ const createOrder = async (req, res) => {
     await session.commitTransaction();
     session.endSession();
 
-    // hydrate using the CORRECT id variable (`order`, not `placeOrder`)
-    const hydratedForSheet = await Order.findById(order._id)
+    // hydrate for sheet + reflect
+    const hydratedForSheet = await Order.findById(orderDoc._id)
       .populate("user", "firstName lastName email")
       .populate("appliedCoupon", "code type value")
       .populate("shippingAddress")
+      .populate("recipients.address")
       .populate({
         path: "items",
-        populate: { path: "products", model: "Product" },
+        populate: { path: "product", model: "Product" },
       })
       .lean();
 
-    // ⬇️ NEW: reflect status into Ongoing/History/Cancel
     try {
       await reflectOrderState(hydratedForSheet);
     } catch (err) {
       console.error("[Reflect:create] failed:", err?.message || err);
     }
 
-    // fire-and-forget (but log real errors)
     pushOrderToSheet(hydratedForSheet).catch((err) => {
       console.error(
         "[Sheets:create]",
@@ -559,12 +689,13 @@ const createOrder = async (req, res) => {
     return res.status(200).json({
       success: true,
       message: "Order Placed Successfully",
-      data: order,
+      data: hydratedForSheet,
     });
   } catch (error) {
     try {
       await session.abortTransaction();
     } catch {}
+    console.log(error);
     session.endSession();
     return res.status(500).json({ success: false, message: error.message });
   }
@@ -674,9 +805,10 @@ const updateOrder = async (req, res) => {
       .populate("user", "firstName lastName email")
       .populate("appliedCoupon", "code type value")
       .populate("shippingAddress")
+      .populate("recipients.address")
       .populate({
         path: "items",
-        populate: { path: "products", model: "Product" },
+        populate: { path: "product", model: "Product" },
       })
       .lean();
 

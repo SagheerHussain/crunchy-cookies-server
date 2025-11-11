@@ -838,20 +838,54 @@ const createProduct = async (req, res) => {
   try {
     const b = req.body;
 
+    // ---- price & discount ----
+    const basePrice = toNum(b.price);
+    const rawDiscount = toNum(b.discount, 0);
+
+    let discount = rawDiscount || 0;
+    let price = basePrice;
+
+    if (basePrice == null) {
+      return res.status(400).json({
+        success: false,
+        message: "Validation error",
+        errors: ["price is required and must be a number"],
+      });
+    }
+
+    if (discount > 0) {
+      // final price = price - discount (never below 0)
+      price = Math.max(0, basePrice - discount);
+    }
+
+    // ---- stock fields ----
+    const totalStocks = toNum(b.totalStocks);
+    let remainingStocks = toNum(b.remainingStocks);
+    const explicitTotalPieceSold = toNum(b.totalPieceSold);
+
+    // if remaining not sent but total + totalPieceSold given -> derive remaining
+    if (
+      remainingStocks == null &&
+      totalStocks != null &&
+      explicitTotalPieceSold != null
+    ) {
+      remainingStocks = Math.max(0, totalStocks - explicitTotalPieceSold);
+    }
+
     const doc = {
-      title: b.title,
-      ar_title: b.ar_title,
-      sku: b.sku,
+      title: b.title && String(b.title).trim(),
+      ar_title: b.ar_title && String(b.ar_title).trim(),
+      sku: b.sku && String(b.sku).trim(),
       description: b.description,
       ar_description: b.ar_description,
       qualities: pickArray(b, "qualities"),
       ar_qualities: pickArray(b, "ar_qualities"),
-      price: toNum(b.price),
-      discount: toNum(b.discount, 0),
+      price, // final price after discount
+      discount, // store discount value as well
       currency: b.currency || "QAR",
-      totalStocks: toNum(b.totalStocks),
-      remainingStocks: toNum(b.remainingStocks),
-      stockStatus: b.stockStatus,
+      totalStocks,
+      remainingStocks,
+      // stockStatus will be derived below if not sent
       brand: normalizeId(b.brand),
       categories: normalizeIdArray(pickArray(b, "categories")),
       totalPieceCarry: toNum(b.totalPieceCarry),
@@ -874,7 +908,9 @@ const createProduct = async (req, res) => {
       images: [],
     };
 
-    // media
+    /* --------- upload media (featured + gallery) ---------- */
+
+    // featured image
     const featuredFile = req.files?.featuredImage?.[0];
     if (featuredFile) {
       const up = await cloudinary.uploader.upload(featuredFile.path, {
@@ -885,6 +921,7 @@ const createProduct = async (req, res) => {
       doc.featuredImage = String(b.featuredImage);
     }
 
+    // gallery images (+ existing urls)
     const galleryFiles = req.files?.images || [];
     const existingUrls = (() => {
       try {
@@ -902,25 +939,93 @@ const createProduct = async (req, res) => {
         existingUrls.push(up.secure_url);
       }
     }
+
     doc.images = existingUrls.map((url) => ({ url }));
 
-    // derived
-    const { totalPieceSold, stockStatus } = deriveStock(
-      doc.totalStocks,
-      doc.remainingStocks
-    );
-    doc.totalPieceSold = totalPieceSold;
-    if (!doc.stockStatus) doc.stockStatus = stockStatus;
+    /* ---------------- required-field validation ---------------- */
+
+    const errors = [];
+
+    if (!doc.title) errors.push("title (English) is required");
+    if (!doc.ar_title) errors.push("ar_title (Arabic) is required");
+    if (!doc.sku) errors.push("sku is required");
+    if (!doc.description) errors.push("description (English) is required");
+    if (!doc.ar_description)
+      errors.push("ar_description (Arabic) is required");
+
+    if (!doc.featuredImage)
+      errors.push("featuredImage is required (upload or URL)");
+    if (!doc.images || doc.images.length === 0)
+      errors.push("At least one gallery image is required");
+
+    if (!doc.brand) errors.push("brand is required");
+    if (!doc.categories || doc.categories.length === 0)
+      errors.push("categories is required");
+    if (!doc.type || doc.type.length === 0)
+      errors.push("type is required");
+    if (!doc.occasions || doc.occasions.length === 0)
+      errors.push("occasions is required");
+    if (!doc.recipients || doc.recipients.length === 0)
+      errors.push("recipients is required");
+    if (!doc.colors || doc.colors.length === 0)
+      errors.push("colors is required");
+    if (doc.totalPieceCarry == null)
+      errors.push("totalPieceCarry is required");
+    if (typeof doc.isActive !== "boolean")
+      errors.push("isActive is required");
+
+    if (errors.length) {
+      return res.status(400).json({
+        success: false,
+        message: "Validation error",
+        errors,
+      });
+    }
+
+    /* ---------------------- stock derivation --------------------- */
+
+    const stockBaseTotal = doc.totalStocks || 0;
+
+    // if still no remainingStocks but we know total -> assume all available
+    if (doc.remainingStocks == null && stockBaseTotal) {
+      doc.remainingStocks =
+        explicitTotalPieceSold != null
+          ? Math.max(0, stockBaseTotal - explicitTotalPieceSold)
+          : stockBaseTotal;
+    }
+
+    // totalPieceSold:
+    if (explicitTotalPieceSold != null) {
+      doc.totalPieceSold = explicitTotalPieceSold;
+    } else {
+      const derived = deriveStock(stockBaseTotal, doc.remainingStocks);
+      doc.totalPieceSold = derived.totalPieceSold;
+      if (!doc.stockStatus) doc.stockStatus = derived.stockStatus;
+    }
+
+    // if client sent stockStatus explicitly, keep; otherwise ensure derived
+    if (!doc.stockStatus) {
+      const { stockStatus } = deriveStock(
+        stockBaseTotal,
+        doc.remainingStocks
+      );
+      doc.stockStatus = stockStatus;
+    }
+
+    /* ------------------------- create ---------------------------- */
 
     const created = await Product.create(doc);
+
     return res.status(201).json({
       success: true,
       message: "Product created successfully",
       data: created,
     });
   } catch (err) {
-    console.error(err);
-    return res.status(500).json({ success: false, error: err.message });
+    console.error("createProduct error:", err);
+    return res
+      .status(500)
+      .json({ success: false, error: err.message || "Server error" });
   }
 };
 
@@ -932,13 +1037,11 @@ const updateProduct = async (req, res) => {
     const toUpdate = {};
     const toUnset = {};
 
-    // primitives
+    // primitives (raw, price/discount override niche handle honge)
     if ("title" in b) toUpdate.title = b.title;
     if ("ar_title" in b) toUpdate.ar_title = b.ar_title;
     if ("description" in b) toUpdate.description = b.description;
     if ("ar_description" in b) toUpdate.ar_description = b.ar_description;
-    if ("price" in b) toUpdate.price = toNum(b.price);
-    if ("discount" in b) toUpdate.discount = toNum(b.discount, 0);
     if ("currency" in b) toUpdate.currency = b.currency;
     if ("totalStocks" in b) toUpdate.totalStocks = toNum(b.totalStocks);
     if ("totalPieceCarry" in b) toUpdate.totalPieceCarry = toNum(b.totalPieceCarry);
@@ -950,18 +1053,14 @@ const updateProduct = async (req, res) => {
     if ("isFeatured" in b) toUpdate.isFeatured = toBool(b.isFeatured, false);
     if ("sku" in b) toUpdate.sku = b.sku;
 
+    // NOTE: price/discount ko niche recompute karenge
+
     // single refs with unset support
     if (b.unset_brand) toUnset.brand = "";
     else if ("brand" in b) {
       const v = normalizeId(b.brand);
       if (v !== undefined) toUpdate.brand = v;
     }
-
-    // if (b.unset_type) toUnset.type = "";
-    // else if ("type" in b) {
-    //   const v = normalizeId(b.type);
-    //   if (v !== undefined) toUpdate.type = v;
-    // }
 
     if (b.unset_packagingOption) toUnset.packagingOption = "";
     else if ("packagingOption" in b) {
@@ -986,23 +1085,14 @@ const updateProduct = async (req, res) => {
       "colors",
       "suggestedProducts",
     ];
+
     for (const k of arrKeys) {
       const present =
         k in b ||
         Object.keys(b).some((x) => x === `${k}[]` || x.startsWith(`${k}[`));
       if (!present) continue;
 
-      if (k === "qualities") {
-        const arr = pickArray(b, k)
-          .map((s) => String(s).trim())
-          .filter(Boolean);
-        toUpdate[k] = arr;
-      } else {
-        const ids = normalizeIdArray(pickArray(b, k));
-        if (ids !== undefined) toUpdate[k] = ids;
-      }
-
-      if (k === "ar_qualities") {
+      if (k === "qualities" || k === "ar_qualities") {
         const arr = pickArray(b, k)
           .map((s) => String(s).trim())
           .filter(Boolean);
@@ -1022,9 +1112,6 @@ const updateProduct = async (req, res) => {
     const featuredFile = req.files?.featuredImage?.[0];
     const galleryFiles = req.files?.images || [];
 
-    console.log(featuredFile);
-    console.log(galleryFiles);
-
     if (featuredFile) {
       const up = await cloudinary.uploader.upload(featuredFile.path, {
         folder: "CRUNCHY COOKIES ASSETS",
@@ -1038,7 +1125,7 @@ const updateProduct = async (req, res) => {
       toUpdate.featuredImage = String(b.featuredImage).trim();
     }
 
-    // merge gallery: accept new files + existing urls from client
+    // merge gallery: new files + existing urls
     const keepUrls = (() => {
       try {
         return JSON.parse(b.existingImageUrls || "[]");
@@ -1059,7 +1146,6 @@ const updateProduct = async (req, res) => {
       "images[]" in b ||
       Object.keys(b).some((k) => k.startsWith("images["))
     ) {
-      // if client sent explicit images list, honor that (replace)
       const arr = pickArray(b, "images")
         .map((u) => String(u).trim())
         .filter(Boolean);
@@ -1070,28 +1156,70 @@ const updateProduct = async (req, res) => {
       toUpdate.images = keepUrls.map((url) => ({ url }));
     }
 
-    // recompute derived if stocks changed
-    if ("totalStocks" in toUpdate || "remainingStocks" in toUpdate) {
-      const current = await Product.findById(id)
-        .select("totalStocks remainingStocks")
-        .lean();
-      const total =
-        "totalStocks" in toUpdate ? toUpdate.totalStocks : current?.totalStocks;
-      const remain =
-        "remainingStocks" in toUpdate
-          ? toUpdate.remainingStocks
-          : current?.remainingStocks;
-      const { totalPieceSold, stockStatus } = deriveStock(total, remain);
-      toUpdate.totalPieceSold = totalPieceSold;
-      if (!("stockStatus" in b)) toUpdate.stockStatus = stockStatus;
+    // ------- fetch current once (for price/discount and stock logic) -------
+    const current = await Product.findById(id)
+      .select("price discount totalStocks remainingStocks totalPieceSold")
+      .lean();
+
+    if (!current) {
+      return res
+        .status(404)
+        .json({ success: false, message: "Product not found" });
     }
 
-    const updateDoc = Object.keys(toUnset).length
-      ? { $set: toUpdate, $unset: toUnset }
-      : { $set: toUpdate };
+    // ------- price & discount logic -------
+    if ("price" in b || "discount" in b) {
+      const basePrice =
+        "price" in b ? toNum(b.price) : toNum(current.price);
+      const disc =
+        "discount" in b ? toNum(b.discount, 0) : toNum(current.discount, 0);
 
-    console.log(updateDoc);
-    console.log(req.files);
+      if (basePrice != null) {
+        const finalPrice = Math.max(0, basePrice - (disc || 0));
+        toUpdate.price = finalPrice;
+        toUpdate.discount = disc || 0;
+      }
+    }
+
+    // ------- stocks: auto remaining + status -------
+    if ("totalStocks" in b || "remainingStocks" in b) {
+      let total =
+        "totalStocks" in b
+          ? toNum(b.totalStocks)
+          : current.totalStocks ?? 0;
+
+      let remain;
+
+      if ("remainingStocks" in b) {
+        remain = toNum(b.remainingStocks);
+      } else {
+        // auto-calc from existing totalPieceSold (if any)
+        const existingSold =
+          typeof current.totalPieceSold === "number"
+            ? current.totalPieceSold
+            : Math.max(
+                0,
+                (current.totalStocks || 0) -
+                  (current.remainingStocks || 0)
+              );
+        remain = Math.max(0, (total || 0) - existingSold);
+      }
+
+      const { totalPieceSold, stockStatus } = deriveStock(total, remain);
+
+      toUpdate.totalStocks = total;
+      toUpdate.remainingStocks = remain;
+      toUpdate.totalPieceSold = totalPieceSold;
+
+      if (!("stockStatus" in b)) {
+        toUpdate.stockStatus = stockStatus;
+      }
+    }
+
+    const updateDoc =
+      Object.keys(toUnset).length > 0
+        ? { $set: toUpdate, $unset: toUnset }
+        : { $set: toUpdate };
 
     const updated = await Product.findByIdAndUpdate(id, updateDoc, {
       new: true,
@@ -1104,7 +1232,7 @@ const updateProduct = async (req, res) => {
       data: updated,
     });
   } catch (err) {
-    console.error(err);
+    console.error("updateProduct error:", err);
     return res.status(500).json({ success: false, error: err.message });
   }
 };

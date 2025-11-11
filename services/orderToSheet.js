@@ -2,97 +2,104 @@
 const { upsertRowByKey, ensureHeaderRow } = require("../utils/googleSheets");
 
 const SPREADSHEET_ID =
-  process.env.SHEETS_SPREADSHEET_ID || "1GJ5Gfe_37oO7UIzJ0yFaEiafX-BdrSd65o9emijLKzQ";
+  process.env.SHEETS_SPREADSHEET_ID ||
+  "1GJ5Gfe_37oO7UIzJ0yFaEiafX-BdrSd65o9emijLKzQ";
 const SHEET_NAME = process.env.SHEETS_ORDERS_TAB || "Orders";
 
+/**
+ * FINAL layout (create + update dono isi ko use karen)
+ *
+ * Code | Delivered At | Placed At | Status | Payment | Customer
+ *      | Sender Phone | Subtotal | Delivery Charges | Grand Total | Card Image
+ */
 const HEADERS = [
   "Code",
-  "Created At",
   "Delivered At",
   "Placed At",
   "Status",
   "Payment",
   "Customer",
   "Sender Phone",
-  "Receiver Phone",
   "Subtotal",
-  "Discount %",
   "Delivery Charges",
-  "Coupon",
   "Grand Total",
-  "Card Message",
   "Card Image",
 ];
 
-const fmtDate = (d) => (d ? new Date(d).toISOString().slice(0, 10) : "");
+const fmtDate = (d) => {
+  if (!d) return "";
+  const date = new Date(d);
+  if (Number.isNaN(date.getTime())) return "";
+  return date.toISOString().slice(0, 10); // 2025-11-11
+};
+
 const money = (n, cur = "QAR") =>
   n == null ? "" : `${cur} ${Number(n || 0).toLocaleString()}`;
 
 const safeSheetText = (v) => {
   if (v == null) return "";
   const s = String(v);
-  return s.startsWith("=") || s.startsWith("+") || s.startsWith("-") ? `'${s}` : s;
+  return s.startsWith("=") || s.startsWith("+") || s.startsWith("-")
+    ? `'${s}`
+    : s;
 };
 
-function getPhones(order) {
-  return {
-    senderPhone: order?.shippingAddress?.senderPhone,
-    receiverPhone: order?.shippingAddress?.receiverPhone,
-  };
-}
 function getCustomer(order) {
-  const fn = order?.user?.firstname || order?.user?.firstName || "";
-  const ln = order?.user?.lastname || order?.user?.lastName || "";
-  return `${fn} ${ln}`.trim() || order?.user?.email || "";
+  const u = order?.user || {};
+  const fn = u.firstname || u.firstName || "";
+  const ln = u.lastname || u.lastName || "";
+  const name = `${fn} ${ln}`.trim();
+  return name || u.email || "";
 }
 
 function calcSubtotal(order) {
-  if (order?.totalAmount != null) return Number(order.totalAmount);
+  if (order?.subtotalAmount != null) return Number(order.subtotalAmount);
   if (Array.isArray(order?.items) && order.items.length) {
-    return order.items.reduce((sum, it) => sum + Number(it?.totalAmount || 0), 0);
+    return order.items.reduce(
+      (sum, it) => sum + Number(it?.totalAmount || 0),
+      0
+    );
   }
   return 0;
 }
 
-function calcDiscountPercent(order) {
-  if (order?.discountPercent != null) return `${order.discountPercent}%`;
-  const type = order?.appliedCoupon?.type;
-  const val = order?.appliedCoupon?.value;
-  if (type === "percentage" && val != null) return `${val}%`;
-  return "";
+function calcDeliveryCharges(order) {
+  if (order?.taxAmount != null) return Number(order.taxAmount);
+  return Number(order?.deliveryCharges || order?.shippingAmount || 0);
 }
 
 function calcGrandTotal(order) {
   if (order?.grandTotal != null) return Number(order.grandTotal);
   const subtotal = calcSubtotal(order);
-  const shipping = Number(order?.deliveryCharges || order?.shippingAmount || 0);
-  const discountPct = Number(String(calcDiscountPercent(order)).replace("%", "") || 0);
-  const afterDiscount = subtotal * (1 - discountPct / 100);
-  return Math.round(afterDiscount + shipping);
+  const delivery = calcDeliveryCharges(order);
+  return Math.round(subtotal + delivery);
 }
 
 function buildRow(order) {
-  const { senderPhone, receiverPhone } = getPhones(order);
   const customer = getCustomer(order);
-  const payment = order?.paymentStatus || order?.payment || "pending";
+  const payment = order?.payment || order?.paymentStatus || "pending";
+  const senderPhone =
+    order?.senderPhone || order?.shippingAddress?.senderPhone || "";
+
+  const subtotal = calcSubtotal(order);
+  const deliveryCharges = calcDeliveryCharges(order);
+  const grandTotal = calcGrandTotal(order);
+
+  // Placed At: use existing placedAt; fallback createdAt; last resort: now
+  const placedAt = order?.placedAt || order?.createdAt || Date.now();
 
   return [
-    order?.code || "",
-    fmtDate(order?.createdAt || Date.now()),
-    fmtDate(order?.deliveredAt),
-    fmtDate(order?.placedAt || order?.createdAt),
-    order?.status || "pending",
-    payment,
-    customer,
-    safeSheetText(senderPhone),
-    safeSheetText(receiverPhone),
-    money(calcSubtotal(order)),
-    calcDiscountPercent(order),
-    money(order?.taxAmount || 0), // ✅ matches "Delivery Charges"
-    order?.appliedCoupon?.code || order?.appliedCoupon || "",
-    money(calcGrandTotal(order)),
-    order?.cardMessage || "",
-    order?.cardImage || "",
+    order?.code || "",                   // Code
+    fmtDate(order?.deliveredAt),         // Delivered At
+    fmtDate(placedAt),                   // Placed At
+    order?.status || "pending",          // Status
+    payment,                             // Payment
+    customer,                            // Customer
+    safeSheetText(senderPhone),          // Sender Phone
+    money(subtotal),                     // Subtotal
+    money(deliveryCharges),              // Delivery Charges
+    money(grandTotal),                   // Grand Total
+    order?.cardImage || "",              // Card Image
   ];
 }
 
@@ -103,6 +110,8 @@ async function pushOrderToSheet(order) {
       return;
     }
 
+    console.log("sheet payload", order)
+
     await ensureHeaderRow({
       spreadsheetId: SPREADSHEET_ID,
       sheetName: SHEET_NAME,
@@ -110,7 +119,8 @@ async function pushOrderToSheet(order) {
     });
 
     const rowValues = buildRow(order);
-    const res = await upsertRowByKey({
+
+    await upsertRowByKey({
       spreadsheetId: SPREADSHEET_ID,
       sheetName: SHEET_NAME,
       headers: HEADERS,
@@ -118,11 +128,11 @@ async function pushOrderToSheet(order) {
       keyValue: order.code,
       rowValues,
     });
-
-    console.log(`[Sheets] ${res.action} row ${res.rowIndex} for Code=${order.code}`);
   } catch (err) {
-    // Log the useful Google API body if present
-    console.error("[pushOrderToSheet] error:", err?.response?.data || err);
+    console.error(
+      "[pushOrderToSheet] error:",
+      err?.response?.data || err?.message || err
+    );
   }
 }
 
