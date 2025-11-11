@@ -43,6 +43,7 @@ const allowedOrigins = [
   "http://localhost:5173",
   "https://crunchy-cookies.skynetsilicon.com",
   "https://crunchy-cookies-dashboard.vercel.app",
+  "https://crunchy-cookies-dashboard-chi.vercel.app"
 ];
 app.use(
   cors({
