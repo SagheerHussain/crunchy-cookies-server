@@ -1034,26 +1034,29 @@ const updateProduct = async (req, res) => {
   try {
     const { id } = req.params;
     const b = req.body;
+
+    console.log(b);
+
     const toUpdate = {};
     const toUnset = {};
 
-    // primitives (raw, price/discount override niche handle honge)
+    // primitives
     if ("title" in b) toUpdate.title = b.title;
     if ("ar_title" in b) toUpdate.ar_title = b.ar_title;
     if ("description" in b) toUpdate.description = b.description;
     if ("ar_description" in b) toUpdate.ar_description = b.ar_description;
     if ("currency" in b) toUpdate.currency = b.currency;
     if ("totalStocks" in b) toUpdate.totalStocks = toNum(b.totalStocks);
+    if ("totalPieceSold" in b) toUpdate.totalPieceSold = toNum(b.totalPieceSold);
     if ("totalPieceCarry" in b) toUpdate.totalPieceCarry = toNum(b.totalPieceCarry);
-    if ("remainingStocks" in b)
-      toUpdate.remainingStocks = toNum(b.remainingStocks);
+    if ("remainingStocks" in b) toUpdate.remainingStocks = toNum(b.remainingStocks);
     if ("stockStatus" in b) toUpdate.stockStatus = b.stockStatus;
     if ("condition" in b) toUpdate.condition = b.condition;
     if ("isActive" in b) toUpdate.isActive = toBool(b.isActive, true);
     if ("isFeatured" in b) toUpdate.isFeatured = toBool(b.isFeatured, false);
     if ("sku" in b) toUpdate.sku = b.sku;
 
-    // NOTE: price/discount ko niche recompute karenge
+    // NOTE: price/discount will be handled below
 
     // single refs with unset support
     if (b.unset_brand) toUnset.brand = "";
@@ -1141,6 +1144,8 @@ const updateProduct = async (req, res) => {
         });
         keepUrls.push(up.secure_url);
       }
+      // when new files come, ensure images set
+      toUpdate.images = keepUrls.map((url) => ({ url }));
     } else if (
       "images" in b ||
       "images[]" in b ||
@@ -1150,9 +1155,7 @@ const updateProduct = async (req, res) => {
         .map((u) => String(u).trim())
         .filter(Boolean);
       toUpdate.images = arr.map((url) => ({ url }));
-    }
-
-    if (!("images" in toUpdate) && keepUrls.length) {
+    } else if (keepUrls.length) {
       toUpdate.images = keepUrls.map((url) => ({ url }));
     }
 
@@ -1181,45 +1184,88 @@ const updateProduct = async (req, res) => {
       }
     }
 
-    // ------- stocks: auto remaining + status -------
-    if ("totalStocks" in b || "remainingStocks" in b) {
+    // ----------------------------------------------------------------------
+    // STOCKS: Prefer totalPieceSold from frontend, auto-calc remainingStocks
+    // ----------------------------------------------------------------------
+    // Precedence:
+    // 1) If body includes totalPieceSold -> compute remaining = total - sold (ignore remainingStocks from body)
+    // 2) Else if body includes remainingStocks -> accept it and recompute sold = total - remaining
+    // 3) Else keep existing values but normalize and compute status
+    {
+      // choose total: incoming or current
       let total =
-        "totalStocks" in b
-          ? toNum(b.totalStocks)
-          : current.totalStocks ?? 0;
+        "totalStocks" in b ? toNum(b.totalStocks) : (current.totalStocks ?? 0);
 
-      let remain;
+      // body may include totalPieceSold (preferred)
+      const hasSoldFromBody = "totalPieceSold" in b && b.totalPieceSold !== undefined;
+      let sold = hasSoldFromBody ? toNum(b.totalPieceSold) : undefined;
 
-      if ("remainingStocks" in b) {
-        remain = toNum(b.remainingStocks);
-      } else {
-        // auto-calc from existing totalPieceSold (if any)
+      // body may include remainingStocks (used only if sold not provided)
+      const hasRemainFromBody = "remainingStocks" in b && b.remainingStocks !== undefined;
+      let remain = hasRemainFromBody ? toNum(b.remainingStocks) : undefined;
+
+      // safety: total cannot be negative/NaN
+      if (!Number.isFinite(total) || total < 0) total = 0;
+
+      if (hasSoldFromBody) {
+        // clamp sold and derive remaining
+        if (!Number.isFinite(sold) || sold < 0) sold = 0;
+        if (sold > total) sold = total;
+        remain = Math.max(0, total - sold);
+
+        toUpdate.totalStocks = total;
+        toUpdate.totalPieceSold = sold;
+        toUpdate.remainingStocks = remain;
+
+        // only compute stockStatus if caller didn't explicitly set it
+        if (!("stockStatus" in b)) {
+          const { stockStatus } = deriveStock(total, remain);
+          toUpdate.stockStatus = stockStatus;
+        }
+      } else if (hasRemainFromBody) {
+        // trust remain from body and derive sold
+        if (!Number.isFinite(remain) || remain < 0) remain = 0;
+        if (remain > total) remain = total;
+        sold = Math.max(0, total - remain);
+
+        toUpdate.totalStocks = total;
+        toUpdate.remainingStocks = remain;
+        toUpdate.totalPieceSold = sold;
+
+        if (!("stockStatus" in b)) {
+          const { stockStatus } = deriveStock(total, remain);
+          toUpdate.stockStatus = stockStatus;
+        }
+      } else if ("totalStocks" in b) {
+        // total changed but neither sold nor remain sent:
+        // recompute remain from existing sold (or fallback from current totals)
         const existingSold =
           typeof current.totalPieceSold === "number"
             ? current.totalPieceSold
-            : Math.max(
-                0,
-                (current.totalStocks || 0) -
-                  (current.remainingStocks || 0)
-              );
-        remain = Math.max(0, (total || 0) - existingSold);
+            : Math.max(0, (current.totalStocks || 0) - (current.remainingStocks || 0));
+
+        // clamp
+        const safeSold = Math.min(Math.max(existingSold, 0), total);
+        const safeRemain = Math.max(0, total - safeSold);
+
+        toUpdate.totalStocks = total;
+        toUpdate.totalPieceSold = safeSold;
+        toUpdate.remainingStocks = safeRemain;
+
+        if (!("stockStatus" in b)) {
+          const { stockStatus } = deriveStock(total, safeRemain);
+          toUpdate.stockStatus = stockStatus;
+        }
       }
-
-      const { totalPieceSold, stockStatus } = deriveStock(total, remain);
-
-      toUpdate.totalStocks = total;
-      toUpdate.remainingStocks = remain;
-      toUpdate.totalPieceSold = totalPieceSold;
-
-      if (!("stockStatus" in b)) {
-        toUpdate.stockStatus = stockStatus;
-      }
+      // else: nothing about stock was provided, leave as-is
     }
 
     const updateDoc =
       Object.keys(toUnset).length > 0
         ? { $set: toUpdate, $unset: toUnset }
         : { $set: toUpdate };
+
+    console.log("updateDoc", updateDoc);
 
     const updated = await Product.findByIdAndUpdate(id, updateDoc, {
       new: true,
