@@ -12,17 +12,15 @@ const getOrdersHistory = async (req, res) => {
         {
           path: "order",
           // pick only fields you need on Order
-          select: "code status payment placedAt deliveredAt grandTotal taxAmount shippingAddress items",
+          select: "code status payment paymentStatus placedAt grandTotal taxAmount recipients senderPhone items taxAmount appliedCoupon",
           populate: [
             {
               // Order.items -> OrderItem[]
               path: "items",
               model: "OrderItem",
-              // NOTE: your schema has 'discountForProducts' (not 'avgDiscount')
-              select: "quantity discountForProducts totalAmount products",
               populate: {
                 // OrderItem.products -> Product
-                path: "products",
+                path: "product",
                 model: "Product",
                 select: "title ar_title quantity featuredImage price",
               },
@@ -67,17 +65,15 @@ const getOrderHistoryById = async (req, res) => {
         {
           path: "order",
           // pick only fields you need on Order
-          select: "code status payment placedAt deliveredAt grandTotal taxAmount shippingAddress items",
+          select: "code status payment paymentStatus placedAt grandTotal taxAmount recipients senderPhone items taxAmount appliedCoupon",
           populate: [
             {
               // Order.items -> OrderItem[]
               path: "items",
               model: "OrderItem",
-              // NOTE: your schema has 'discountForProducts' (not 'avgDiscount')
-              select: "quantity discountForProducts totalAmount products",
               populate: {
                 // OrderItem.products -> Product
-                path: "products",
+                path: "product",
                 model: "Product",
                 select: "title ar_title quantity featuredImage price",
               },
@@ -122,17 +118,15 @@ const getOrdersHistoryByUser = async (req, res) => {
         {
           path: "order",
           // pick only fields you need on Order
-          select: "code status payment placedAt deliveredAt grandTotal taxAmount shippingAddress items",
+          select: "code status payment paymentStatus placedAt grandTotal taxAmount recipients senderPhone items taxAmount appliedCoupon",
           populate: [
             {
               // Order.items -> OrderItem[]
               path: "items",
               model: "OrderItem",
-              // NOTE: your schema has 'discountForProducts' (not 'avgDiscount')
-              select: "quantity discountForProducts totalAmount products",
               populate: {
                 // OrderItem.products -> Product
-                path: "products",
+                path: "product",
                 model: "Product",
                 select: "title ar_title quantity featuredImage price",
               },
