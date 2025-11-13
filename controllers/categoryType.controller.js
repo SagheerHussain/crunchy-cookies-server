@@ -45,7 +45,7 @@ const createCategoryType = async (req, res) => {
   try {
     const { name, ar_name, parent, totalStock, totalPieceUsed } = req.body;
 
-    if (!name || !ar_name || !parent || !totalStock || !totalPieceUsed) {
+    if (!name || !ar_name || !totalStock || !totalPieceUsed) {
       return res
         .status(200)
         .json({ success: false, message: "Category Type not found" });
@@ -65,7 +65,7 @@ const createCategoryType = async (req, res) => {
       name,
       ar_name,
       slug,
-      parent,
+      parent: null,
       totalStock,
       remainingStock,
       totalPieceUsed,
