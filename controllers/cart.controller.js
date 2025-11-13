@@ -19,7 +19,7 @@ function normalizeItems(items = []) {
 
 const basePopulate = [
   { path: "user", select: "_id name email" },
-  { path: "items.product", select: "_id title ar_title description ar_description price images slug sku" },
+  { path: "items.product", select: "_id title ar_title description ar_description remainingStocks price images slug sku" },
 ];
 
 /* -------------------------------- GET ---------------------------------- */

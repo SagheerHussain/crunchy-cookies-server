@@ -352,12 +352,13 @@ const getProductsByFilters = async (req, res) => {
     const sort = buildSort(req.query.sort);
 
     // Resolve to _ids (handle slugs or ids)
-    const [subCategoryIds, occasionIds, brandIds, recipientIds] = await Promise.all([
-      resolveIds(SubCategory, subCatQ),
-      resolveIds(Occasion, occQ),
-      resolveIds(Brand, brandQ),
-      resolveIds(Recipient, recQ),
-    ]);
+    const [subCategoryIds, occasionIds, brandIds, recipientIds] =
+      await Promise.all([
+        resolveIds(SubCategory, subCatQ),
+        resolveIds(Occasion, occQ),
+        resolveIds(Brand, brandQ),
+        resolveIds(Recipient, recQ),
+      ]);
 
     // Build filter
     const filter = { isActive: true }; // only active products by default
@@ -845,6 +846,11 @@ const createProduct = async (req, res) => {
     let discount = rawDiscount || 0;
     let price = basePrice;
 
+    if (discount > 0) {
+      // final price = price - discount (never below 0)
+      price = Math.max(0, basePrice - discount);
+    }
+
     if (basePrice == null) {
       return res.status(400).json({
         success: false,
@@ -880,8 +886,9 @@ const createProduct = async (req, res) => {
       ar_description: b.ar_description,
       qualities: pickArray(b, "qualities"),
       ar_qualities: pickArray(b, "ar_qualities"),
-      price, // final price after discount
-      discount, // store discount value as well
+      price, // 🔹 still storing final price (for backward compatibility)
+      discount, // discount value
+      priceAfterDiscount: price, // 🔹 NEW: explicitly store final price as well
       currency: b.currency || "QAR",
       totalStocks,
       remainingStocks,
@@ -950,8 +957,7 @@ const createProduct = async (req, res) => {
     if (!doc.ar_title) errors.push("ar_title (Arabic) is required");
     if (!doc.sku) errors.push("sku is required");
     if (!doc.description) errors.push("description (English) is required");
-    if (!doc.ar_description)
-      errors.push("ar_description (Arabic) is required");
+    if (!doc.ar_description) errors.push("ar_description (Arabic) is required");
 
     if (!doc.featuredImage)
       errors.push("featuredImage is required (upload or URL)");
@@ -961,18 +967,15 @@ const createProduct = async (req, res) => {
     if (!doc.brand) errors.push("brand is required");
     if (!doc.categories || doc.categories.length === 0)
       errors.push("categories is required");
-    if (!doc.type || doc.type.length === 0)
-      errors.push("type is required");
+    if (!doc.type || doc.type.length === 0) errors.push("type is required");
     if (!doc.occasions || doc.occasions.length === 0)
       errors.push("occasions is required");
     if (!doc.recipients || doc.recipients.length === 0)
       errors.push("recipients is required");
     if (!doc.colors || doc.colors.length === 0)
       errors.push("colors is required");
-    if (doc.totalPieceCarry == null)
-      errors.push("totalPieceCarry is required");
-    if (typeof doc.isActive !== "boolean")
-      errors.push("isActive is required");
+    if (doc.totalPieceCarry == null) errors.push("totalPieceCarry is required");
+    if (typeof doc.isActive !== "boolean") errors.push("isActive is required");
 
     if (errors.length) {
       return res.status(400).json({
@@ -1005,10 +1008,7 @@ const createProduct = async (req, res) => {
 
     // if client sent stockStatus explicitly, keep; otherwise ensure derived
     if (!doc.stockStatus) {
-      const { stockStatus } = deriveStock(
-        stockBaseTotal,
-        doc.remainingStocks
-      );
+      const { stockStatus } = deriveStock(stockBaseTotal, doc.remainingStocks);
       doc.stockStatus = stockStatus;
     }
 
@@ -1047,9 +1047,12 @@ const updateProduct = async (req, res) => {
     if ("ar_description" in b) toUpdate.ar_description = b.ar_description;
     if ("currency" in b) toUpdate.currency = b.currency;
     if ("totalStocks" in b) toUpdate.totalStocks = toNum(b.totalStocks);
-    if ("totalPieceSold" in b) toUpdate.totalPieceSold = toNum(b.totalPieceSold);
-    if ("totalPieceCarry" in b) toUpdate.totalPieceCarry = toNum(b.totalPieceCarry);
-    if ("remainingStocks" in b) toUpdate.remainingStocks = toNum(b.remainingStocks);
+    if ("totalPieceSold" in b)
+      toUpdate.totalPieceSold = toNum(b.totalPieceSold);
+    if ("totalPieceCarry" in b)
+      toUpdate.totalPieceCarry = toNum(b.totalPieceCarry);
+    if ("remainingStocks" in b)
+      toUpdate.remainingStocks = toNum(b.remainingStocks);
     if ("stockStatus" in b) toUpdate.stockStatus = b.stockStatus;
     if ("condition" in b) toUpdate.condition = b.condition;
     if ("isActive" in b) toUpdate.isActive = toBool(b.isActive, true);
@@ -1172,15 +1175,16 @@ const updateProduct = async (req, res) => {
 
     // ------- price & discount logic -------
     if ("price" in b || "discount" in b) {
-      const basePrice =
-        "price" in b ? toNum(b.price) : toNum(current.price);
+      const basePrice = "price" in b ? toNum(b.price) : toNum(current.price);
       const disc =
         "discount" in b ? toNum(b.discount, 0) : toNum(current.discount, 0);
 
       if (basePrice != null) {
         const finalPrice = Math.max(0, basePrice - (disc || 0));
-        toUpdate.price = finalPrice;
+
+        toUpdate.price = finalPrice; // still your main price field
         toUpdate.discount = disc || 0;
+        toUpdate.priceAfterDiscount = finalPrice; // 🔹 keep new field synced
       }
     }
 
@@ -1194,14 +1198,16 @@ const updateProduct = async (req, res) => {
     {
       // choose total: incoming or current
       let total =
-        "totalStocks" in b ? toNum(b.totalStocks) : (current.totalStocks ?? 0);
+        "totalStocks" in b ? toNum(b.totalStocks) : current.totalStocks ?? 0;
 
       // body may include totalPieceSold (preferred)
-      const hasSoldFromBody = "totalPieceSold" in b && b.totalPieceSold !== undefined;
+      const hasSoldFromBody =
+        "totalPieceSold" in b && b.totalPieceSold !== undefined;
       let sold = hasSoldFromBody ? toNum(b.totalPieceSold) : undefined;
 
       // body may include remainingStocks (used only if sold not provided)
-      const hasRemainFromBody = "remainingStocks" in b && b.remainingStocks !== undefined;
+      const hasRemainFromBody =
+        "remainingStocks" in b && b.remainingStocks !== undefined;
       let remain = hasRemainFromBody ? toNum(b.remainingStocks) : undefined;
 
       // safety: total cannot be negative/NaN
@@ -1242,7 +1248,10 @@ const updateProduct = async (req, res) => {
         const existingSold =
           typeof current.totalPieceSold === "number"
             ? current.totalPieceSold
-            : Math.max(0, (current.totalStocks || 0) - (current.remainingStocks || 0));
+            : Math.max(
+                0,
+                (current.totalStocks || 0) - (current.remainingStocks || 0)
+              );
 
         // clamp
         const safeSold = Math.min(Math.max(existingSold, 0), total);

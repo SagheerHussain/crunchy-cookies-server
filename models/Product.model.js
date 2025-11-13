@@ -14,6 +14,7 @@ const productSchema = new mongoose.Schema(
     ar_qualities: [{ type: String }],
     price: { type: Number, required: true },
     discount: { type: Number, default: 0 },
+    priceAfterDiscount: { type: Number, default: 0 },
     currency: { type: String, enum: CURRENCIES, default: "QAR" },
     totalStocks: { type: Number, required: true },
     remainingStocks: { type: Number, required: true },
