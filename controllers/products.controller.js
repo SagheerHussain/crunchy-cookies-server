@@ -238,7 +238,7 @@ const splitToIds = (v) => {
 const getProducts = async (req, res) => {
   try {
     const { page, limit, skip } = getPagination(req.query);
-    const { stockStatus, from, to } = req.query;
+    const { stockStatus, from, to, q } = req.query; // 👈 q added
 
     // build filters
     const where = {};
@@ -260,6 +260,23 @@ const getProducts = async (req, res) => {
         end.setHours(23, 59, 59, 999); // inclusive end-of-day
         where.createdAt.$lte = end;
       }
+    }
+
+    // 🔍 text search on multiple fields (optional)
+    if (q && String(q).trim()) {
+      const term = String(q).trim();
+
+      // case-insensitive regex
+      const regex = new RegExp(term, "i");
+
+      // mix with other filters is fine: Mongo will AND this $or with stockStatus/date
+      where.$or = [
+        { title: regex },
+        { ar_title: regex },
+        { description: regex },
+        { ar_description: regex },
+        { sku: regex },
+      ];
     }
 
     const [products, total] = await Promise.all([
