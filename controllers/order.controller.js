@@ -452,7 +452,7 @@ const createOrder = async (req, res) => {
           phone: senderPhone, // or shippingAddress.receiverPhone
           address: addressId,
           cardMessage: cardMessage || null,
-          cardImage: cardImage || null,
+          cardImage: cardImage || "https://res.cloudinary.com/dso2jjdcz/image/upload/v1762843729/Gemini_Generated_Image_sy9p07sy9p07sy9p_a6gikd.png",
           deliveryInstructions: deliveryInstructions || null,
         },
       });
