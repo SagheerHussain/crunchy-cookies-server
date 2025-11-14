@@ -46,6 +46,17 @@ const normalizeId = (v) => {
   return isValidObjectId(s) ? s : undefined;
 };
 
+// ObjectId[] fields jo body se string/JSON bhi aa sakte hain
+const arrayIdFields = new Set([
+  "categories",
+  "type",
+  "occasions",
+  "recipients",
+  "colors",
+  "suggestedProducts",
+]);
+
+
 const normalizeIdArray = (arr) => {
   if (!arr) return undefined;
   const xs = Array.isArray(arr) ? arr : [arr];
@@ -857,8 +868,8 @@ const createProduct = async (req, res) => {
     const b = req.body;
 
     // ---- price & discount ----
-    const basePrice = toNum(b.price);          // ORIGINAL price
-    let discount = toNum(b.discount, 0) || 0;  // flat discount amount
+    const basePrice = toNum(b.price); // ORIGINAL price
+    let discount = toNum(b.discount, 0) || 0; // flat discount amount
 
     if (basePrice == null) {
       return res.status(400).json({
@@ -897,9 +908,9 @@ const createProduct = async (req, res) => {
       ar_qualities: pickArray(b, "ar_qualities"),
 
       // 🔹 pricing fields
-      price: basePrice,                 // ORIGINAL price
-      discount,                         // discount amount
-      priceAfterDiscount,               // FINAL price after discount
+      price: basePrice, // ORIGINAL price
+      discount, // discount amount
+      priceAfterDiscount, // FINAL price after discount
 
       currency: b.currency || "QAR",
       totalStocks,
@@ -1041,22 +1052,83 @@ const createProduct = async (req, res) => {
   }
 };
 
-/* -------------------------------- PUT ------------------------------ */
+/* -------------------------------- PUT ----------------------------- */
 const updateProduct = async (req, res) => {
   try {
     const { id } = req.params;
     const b = req.body;
 
-    console.log(b);
+    console.log("BODY:", b);
 
     const toUpdate = {};
     const toUnset = {};
 
-    // ... (primitive fields, arrays, media etc. same as before)
+    // fields jinke liye custom logic neeche hai
+    const skipForCustomLogic = new Set([
+      "price",
+      "discount",
+      "totalStocks",
+      "remainingStocks",
+      "totalPieceSold",
+      "stockStatus",
+      "priceAfterDiscount",
+    ]);
 
-    // ------- fetch current once (for price/discount and stock logic) -------
-    const current = await Product.findById(id)
-      .select("price discount priceAfterDiscount totalStocks remainingStocks totalPieceSold")
+    // ------------- copy / parse normal fields -----------------
+    for (const [key, raw] of Object.entries(b)) {
+      if (skipForCustomLogic.has(key)) continue;
+
+      // 1) ObjectId arrays (JSON string from FormData)
+      if (arrayIdFields.has(key)) {
+        const arr = normalizeIdArray(raw);
+        if (arr === undefined) {
+          // null / "" => skip (purani value rahe)
+          continue;
+        }
+        // yahan empty array bhi allow hai => field clear karni ho
+        toUpdate[key] = arr;
+        continue;
+      }
+
+      // 2) dimensions (JSON string)
+      if (key === "dimensions") {
+        let v = raw;
+        if (typeof v === "string") {
+          try {
+            v = JSON.parse(v);
+          } catch {
+            continue;
+          }
+        }
+        if (
+          v &&
+          typeof v === "object" &&
+          Object.keys(v).length === 0
+        ) {
+          // empty object => ignore
+          continue;
+        }
+        toUpdate[key] = v;
+        continue;
+      }
+
+      // 3) baaki scalar fields (text / number / bool)
+      let value = raw;
+      if (value === undefined || value === null) continue;
+
+      if (typeof value === "string" && value.trim() === "") {
+        // empty string => user ne field touch nahi ki / blank nahi karna
+        continue;
+      }
+
+      toUpdate[key] = value;
+    }
+
+    // ------- current product (stock / price ke liye) -------
+    const current = await Product.findById({ _id: id })
+      .select(
+        "price discount priceAfterDiscount totalStocks remainingStocks totalPieceSold"
+      )
       .lean();
 
     if (!current) {
@@ -1065,39 +1137,46 @@ const updateProduct = async (req, res) => {
         .json({ success: false, message: "Product not found" });
     }
 
-    // ------- price & discount logic (base price + priceAfterDiscount) ------
+    // ------- PRICE & DISCOUNT LOGIC -------
     if ("price" in b || "discount" in b) {
-      // base/original price
       const basePrice =
-        "price" in b ? toNum(b.price) : toNum(current.price);
+        "price" in b && b.price !== ""
+          ? toNum(b.price)
+          : toNum(current.price);
 
-      // discount amount
       let disc =
-        "discount" in b ? toNum(b.discount, 0) : toNum(current.discount, 0);
+        "discount" in b && b.discount !== ""
+          ? toNum(b.discount, 0)
+          : toNum(current.discount, 0);
 
       if (basePrice != null) {
         if (!Number.isFinite(disc) || disc < 0) disc = 0;
 
         const finalPrice = Math.max(0, basePrice - (disc || 0));
 
-        // 🔹 keep ORIGINAL price in `price`
         toUpdate.price = basePrice;
         toUpdate.discount = disc || 0;
-        toUpdate.priceAfterDiscount = finalPrice; // 🔹 discounted final price
+        toUpdate.priceAfterDiscount = finalPrice;
       }
     }
 
-    // --------- STOCK LOGIC (same as your current implementation) ----------
+    // ---------------- STOCK LOGIC ----------------
     {
       let total =
-        "totalStocks" in b ? toNum(b.totalStocks) : (current.totalStocks ?? 0);
+        "totalStocks" in b && b.totalStocks !== ""
+          ? toNum(b.totalStocks)
+          : current.totalStocks ?? 0;
 
       const hasSoldFromBody =
-        "totalPieceSold" in b && b.totalPieceSold !== undefined;
+        "totalPieceSold" in b &&
+        b.totalPieceSold !== undefined &&
+        b.totalPieceSold !== "";
       let sold = hasSoldFromBody ? toNum(b.totalPieceSold) : undefined;
 
       const hasRemainFromBody =
-        "remainingStocks" in b && b.remainingStocks !== undefined;
+        "remainingStocks" in b &&
+        b.remainingStocks !== undefined &&
+        b.remainingStocks !== "";
       let remain = hasRemainFromBody ? toNum(b.remainingStocks) : undefined;
 
       if (!Number.isFinite(total) || total < 0) total = 0;
@@ -1128,7 +1207,7 @@ const updateProduct = async (req, res) => {
           const { stockStatus } = deriveStock(total, remain);
           toUpdate.stockStatus = stockStatus;
         }
-      } else if ("totalStocks" in b) {
+      } else if ("totalStocks" in b && b.totalStocks !== "") {
         const existingSold =
           typeof current.totalPieceSold === "number"
             ? current.totalPieceSold
@@ -1151,14 +1230,15 @@ const updateProduct = async (req, res) => {
       }
     }
 
+    // ------------- FINAL UPDATE DOC -------------
     const updateDoc =
       Object.keys(toUnset).length > 0
         ? { $set: toUpdate, $unset: toUnset }
         : { $set: toUpdate };
 
-    console.log("updateDoc", updateDoc);
+    console.log("updateDoc", JSON.stringify(updateDoc, null, 2));
 
-    const updated = await Product.findByIdAndUpdate(id, updateDoc, {
+    const updated = await Product.findByIdAndUpdate({ _id: id }, updateDoc, {
       new: true,
       runValidators: true,
     });
