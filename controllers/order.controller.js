@@ -730,6 +730,12 @@ const updateOrder = async (req, res) => {
 
     if (patch.status === "delivered") patch.deliveredAt = new Date();
 
+    if (patch.status === "cancelled") {
+      patch.payment = "failed";
+    } else if (patch.status === "returned") {
+      patch.payment = "refunded";
+    }
+
     if (patch.shippingAddress && !isValidObjectId(patch.shippingAddress)) {
       const createdAddress = await Address.create([patch.shippingAddress], {
         session,
