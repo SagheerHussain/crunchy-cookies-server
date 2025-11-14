@@ -5,6 +5,7 @@ const {
     getOrders,
     getOrderById,
     getOrdersByUser,
+    getCurrentLatestOrderByUser,
     createOrder,
     updateOrder,
     deleteOrder,
@@ -14,6 +15,7 @@ const {
 /* -------------------------------- GET ----------------------------- */
 router.get("/lists", getOrders);
 router.get("/lists/:id", getOrderById);
+router.get("/lists/current-latest-order/:userId", getCurrentLatestOrderByUser);
 router.get("/lists/user/:userId", getOrdersByUser);
 
 /* -------------------------------- POST ----------------------------- */

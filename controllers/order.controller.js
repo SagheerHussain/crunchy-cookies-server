@@ -250,6 +250,25 @@ const getOrdersByUser = async (req, res) => {
   }
 };
 
+const getCurrentLatestOrderByUser = async (req, res) => {
+  try {
+    const { userId } = req.params;
+    const orders = await Order.find({ user: userId })
+      .sort({ createdAt: -1 })
+      .lean();
+      
+    return res
+      .status(200)
+      .json({
+        success: true,
+        message: "Orders fetched",
+        data: orders[0] || [],
+      });
+  } catch (error) {
+    return res.status(500).json({ success: false, message: error.message });
+  }
+};
+
 /* -------------------------------- POST ----------------------------- */
 const createOrder = async (req, res) => {
   const session = await mongoose.startSession();
@@ -911,6 +930,7 @@ module.exports = {
   getOrders,
   getOrderById,
   getOrdersByUser,
+  getCurrentLatestOrderByUser,
   createOrder,
   updateOrder,
   deleteOrder,
