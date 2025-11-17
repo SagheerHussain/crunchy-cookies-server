@@ -466,26 +466,31 @@ const getProductNames = async (req, res) => {
   }
 };
 
-// Returns all products whose subcategory is "Flower in vases"
+/* --------------- 1) Flowers in Vases ------------------ */
 const getProductsInFlowerInVases = async (req, res) => {
   try {
+    // default limit = 4 for this endpoint
+    if (!req.query.limit) req.query.limit = '4';
+
     const { page, limit, skip } = getPagination(req.query);
-    const catIds = await subCategoryIdsByNames(["flowers in vases"]);
+    const catIds = await subCategoryIdsByNames(['flowers in vases']);
+
+    const query = { categories: { $in: catIds } };
 
     const [products, total] = await Promise.all([
-      Product.find({ categories: { $in: catIds } })
+      Product.find(query)
         .populate(
-          "brand categories type occasions recipients colors packagingOption suggestedProducts"
+          'brand categories type occasions recipients colors packagingOption suggestedProducts'
         )
         .skip(skip)
         .limit(limit)
         .lean(),
-      Product.countDocuments({ categories: { $in: catIds } }),
+      Product.countDocuments(query),
     ]);
 
     return res.status(200).json({
       success: true,
-      message: "Products (Flower in vases)",
+      message: 'Products (Flower in vases)',
       data: products,
       meta: {
         page,
@@ -503,10 +508,11 @@ const getProductsInFlowerInVases = async (req, res) => {
   }
 };
 
-/* ----------------------------- 2) Top sold product ------------------------------ */
-// Returns the (or top N) most sold product(s). Optional ?limit=n (default 1)
+/* --------------- 2) Top Sold Products ------------------ */
 const getTopSoldProducts = async (req, res) => {
   try {
+    if (!req.query.limit) req.query.limit = '4';
+
     const { page, limit, skip } = getPagination(req.query);
 
     const [products, total] = await Promise.all([
@@ -515,7 +521,7 @@ const getTopSoldProducts = async (req, res) => {
         .skip(skip)
         .limit(limit)
         .populate(
-          "brand categories type occasions recipients colors packagingOption suggestedProducts"
+          'brand categories type occasions recipients colors packagingOption suggestedProducts'
         )
         .lean(),
       Product.countDocuments({}), // total universe for top-sold list
@@ -523,7 +529,7 @@ const getTopSoldProducts = async (req, res) => {
 
     return res.status(200).json({
       success: true,
-      message: "Top sold products",
+      message: 'Top sold products',
       data: products,
       meta: {
         page,
@@ -542,18 +548,19 @@ const getTopSoldProducts = async (req, res) => {
 };
 
 /* --------------- 3) Subcategory is Chocolates OR Hand Bouquets ------------------ */
-// Returns products if subcategory matches either one of them
 const getProductsInChocolatesOrHandBouquets = async (req, res) => {
   try {
+    if (!req.query.limit) req.query.limit = '4';
+
     const { page, limit, skip } = getPagination(req.query);
-    const catIds = await subCategoryIdsByNames(["chocolates", "hand bouquets"]);
+    const catIds = await subCategoryIdsByNames(['chocolates', 'hand bouquets']);
 
     const query = { categories: { $in: catIds } };
 
     const [products, total] = await Promise.all([
       Product.find(query)
         .populate(
-          "brand categories type occasions recipients colors packagingOption suggestedProducts"
+          'brand categories type occasions recipients colors packagingOption suggestedProducts'
         )
         .skip(skip)
         .limit(limit)
@@ -563,7 +570,7 @@ const getProductsInChocolatesOrHandBouquets = async (req, res) => {
 
     return res.status(200).json({
       success: true,
-      message: "Products (Chocolates OR Hand Bouquets)",
+      message: 'Products (Chocolates OR Hand Bouquets)',
       data: products,
       meta: {
         page,
@@ -582,18 +589,19 @@ const getProductsInChocolatesOrHandBouquets = async (req, res) => {
 };
 
 /* -------------------------- 4) Occasion equals Friends -------------------------- */
-// Returns products whose occasion contains "friends"
 const getProductsForFriendsOccasion = async (req, res) => {
   try {
+    if (!req.query.limit) req.query.limit = '4';
+
     const { page, limit, skip } = getPagination(req.query);
-    const recIds = await recipientIdsByNames(["friends"]);
+    const recIds = await recipientIdsByNames(['friends']);
 
     const query = { recipients: { $in: recIds } };
 
     const [products, total] = await Promise.all([
       Product.find(query)
         .populate(
-          "brand categories type occasions recipients colors packagingOption suggestedProducts"
+          'brand categories type occasions recipients colors packagingOption suggestedProducts'
         )
         .skip(skip)
         .limit(limit)
@@ -603,7 +611,7 @@ const getProductsForFriendsOccasion = async (req, res) => {
 
     return res.status(200).json({
       success: true,
-      message: "Products (Occasion: Friends)",
+      message: 'Products (Occasion: Friends)',
       data: products,
       meta: {
         page,
@@ -622,16 +630,17 @@ const getProductsForFriendsOccasion = async (req, res) => {
 };
 
 /* ------------------------------ 5) Featured products ---------------------------- */
-// Returns featured products
 const getFeaturedProducts = async (req, res) => {
   try {
+    if (!req.query.limit) req.query.limit = '4';
+
     const { page, limit, skip } = getPagination(req.query);
     const query = { isFeatured: true, isActive: true };
 
     const [products, total] = await Promise.all([
       Product.find(query)
         .populate(
-          "brand categories type occasions recipients colors packagingOption suggestedProducts"
+          'brand categories type occasions recipients colors packagingOption suggestedProducts'
         )
         .skip(skip)
         .limit(limit)
@@ -641,7 +650,7 @@ const getFeaturedProducts = async (req, res) => {
 
     return res.status(200).json({
       success: true,
-      message: "Featured products",
+      message: 'Featured products',
       data: products,
       meta: {
         page,
@@ -662,15 +671,17 @@ const getFeaturedProducts = async (req, res) => {
 /* ------------------------------ 6) Subcategory: Perfumes ------------------------ */
 const getProductsInPerfumes = async (req, res) => {
   try {
+    if (!req.query.limit) req.query.limit = '4';
+
     const { page, limit, skip } = getPagination(req.query);
-    const catIds = await subCategoryIdsByNames(["perfumes"]);
+    const catIds = await subCategoryIdsByNames(['perfumes']);
 
     const query = { categories: { $in: catIds } };
 
     const [products, total] = await Promise.all([
       Product.find(query)
         .populate(
-          "brand categories type occasions recipients colors packagingOption suggestedProducts"
+          'brand categories type occasions recipients colors packagingOption suggestedProducts'
         )
         .skip(skip)
         .limit(limit)
@@ -680,7 +691,7 @@ const getProductsInPerfumes = async (req, res) => {
 
     return res.status(200).json({
       success: true,
-      message: "Products (Perfumes)",
+      message: 'Products (Perfumes)',
       data: products,
       meta: {
         page,
@@ -701,15 +712,17 @@ const getProductsInPerfumes = async (req, res) => {
 /* ------------------------- 7) Subcategory: Preserved Flowers -------------------- */
 const getProductsInPreservedFlowers = async (req, res) => {
   try {
+    if (!req.query.limit) req.query.limit = '4';
+
     const { page, limit, skip } = getPagination(req.query);
-    const catIds = await subCategoryIdsByNames(["preserved flowers"]);
+    const catIds = await subCategoryIdsByNames(['preserved flowers']);
 
     const query = { categories: { $in: catIds } };
 
     const [products, total] = await Promise.all([
       Product.find(query)
         .populate(
-          "brand categories type occasions recipients colors packagingOption suggestedProducts"
+          'brand categories type occasions recipients colors packagingOption suggestedProducts'
         )
         .skip(skip)
         .limit(limit)
@@ -719,7 +732,7 @@ const getProductsInPreservedFlowers = async (req, res) => {
 
     return res.status(200).json({
       success: true,
-      message: "Products (Preserved Flowers)",
+      message: 'Products (Preserved Flowers)',
       data: products,
       meta: {
         page,
@@ -736,6 +749,7 @@ const getProductsInPreservedFlowers = async (req, res) => {
     return res.status(500).json({ success: false, error: err.message });
   }
 };
+
 
 // Search Products
 const getProductsBySearch = async (req, res) => {
@@ -882,7 +896,7 @@ const createProduct = async (req, res) => {
     if (!Number.isFinite(discount) || discount < 0) discount = 0;
 
     // final price after discount (never below 0)
-    const priceAfterDiscount = Math.max(0, basePrice - discount);
+    const priceAfterDiscount = Math.max(0, basePrice - (basePrice * discount / 100));
 
     // ---- stock fields ----
     const totalStocks = toNum(b.totalStocks);
@@ -1152,7 +1166,7 @@ const updateProduct = async (req, res) => {
       if (basePrice != null) {
         if (!Number.isFinite(disc) || disc < 0) disc = 0;
 
-        const finalPrice = Math.max(0, basePrice - (disc || 0));
+        const finalPrice = Math.max(0, basePrice - (basePrice * disc / 100));
 
         toUpdate.price = basePrice;
         toUpdate.discount = disc || 0;
