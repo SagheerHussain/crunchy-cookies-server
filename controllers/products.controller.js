@@ -46,6 +46,37 @@ const normalizeId = (v) => {
   return isValidObjectId(s) ? s : undefined;
 };
 
+function parseTypePiecesInput(raw) {
+  if (!raw) return [];
+
+  let arr = raw;
+
+  // if front-end sends JSON string
+  if (typeof raw === "string") {
+    const parsed = maybeJSON(raw);
+    if (!Array.isArray(parsed)) return [];
+    arr = parsed;
+  }
+
+  if (!Array.isArray(arr)) return [];
+
+  return arr
+    .map((row) => {
+      if (!row || typeof row !== "object") return null;
+
+      const typeId = normalizeId(row.type || row.typeId || row.categoryType);
+      const pieces = toNum(row.pieces ?? row.qty ?? row.quantity, undefined);
+
+      if (!typeId || pieces == null) return null;
+
+      return {
+        type: typeId,
+        pieces,
+      };
+    })
+    .filter(Boolean);
+}
+
 // ObjectId[] fields jo body se string/JSON bhi aa sakte hain
 const arrayIdFields = new Set([
   "categories",
@@ -55,7 +86,6 @@ const arrayIdFields = new Set([
   "colors",
   "suggestedProducts",
 ]);
-
 
 const normalizeIdArray = (arr) => {
   if (!arr) return undefined;
@@ -470,17 +500,17 @@ const getProductNames = async (req, res) => {
 const getProductsInFlowerInVases = async (req, res) => {
   try {
     // default limit = 4 for this endpoint
-    if (!req.query.limit) req.query.limit = '4';
+    if (!req.query.limit) req.query.limit = "4";
 
     const { page, limit, skip } = getPagination(req.query);
-    const catIds = await subCategoryIdsByNames(['flowers in vases']);
+    const catIds = await subCategoryIdsByNames(["flowers in vases"]);
 
     const query = { categories: { $in: catIds } };
 
     const [products, total] = await Promise.all([
       Product.find(query)
         .populate(
-          'brand categories type occasions recipients colors packagingOption suggestedProducts'
+          "brand categories type occasions recipients colors packagingOption suggestedProducts"
         )
         .skip(skip)
         .limit(limit)
@@ -490,7 +520,7 @@ const getProductsInFlowerInVases = async (req, res) => {
 
     return res.status(200).json({
       success: true,
-      message: 'Products (Flower in vases)',
+      message: "Products (Flower in vases)",
       data: products,
       meta: {
         page,
@@ -511,7 +541,7 @@ const getProductsInFlowerInVases = async (req, res) => {
 /* --------------- 2) Top Sold Products ------------------ */
 const getTopSoldProducts = async (req, res) => {
   try {
-    if (!req.query.limit) req.query.limit = '4';
+    if (!req.query.limit) req.query.limit = "4";
 
     const { page, limit, skip } = getPagination(req.query);
 
@@ -521,7 +551,7 @@ const getTopSoldProducts = async (req, res) => {
         .skip(skip)
         .limit(limit)
         .populate(
-          'brand categories type occasions recipients colors packagingOption suggestedProducts'
+          "brand categories type occasions recipients colors packagingOption suggestedProducts"
         )
         .lean(),
       Product.countDocuments({}), // total universe for top-sold list
@@ -529,7 +559,7 @@ const getTopSoldProducts = async (req, res) => {
 
     return res.status(200).json({
       success: true,
-      message: 'Top sold products',
+      message: "Top sold products",
       data: products,
       meta: {
         page,
@@ -550,17 +580,17 @@ const getTopSoldProducts = async (req, res) => {
 /* --------------- 3) Subcategory is Chocolates OR Hand Bouquets ------------------ */
 const getProductsInChocolatesOrHandBouquets = async (req, res) => {
   try {
-    if (!req.query.limit) req.query.limit = '4';
+    if (!req.query.limit) req.query.limit = "4";
 
     const { page, limit, skip } = getPagination(req.query);
-    const catIds = await subCategoryIdsByNames(['chocolates', 'hand bouquets']);
+    const catIds = await subCategoryIdsByNames(["chocolates", "hand bouquets"]);
 
     const query = { categories: { $in: catIds } };
 
     const [products, total] = await Promise.all([
       Product.find(query)
         .populate(
-          'brand categories type occasions recipients colors packagingOption suggestedProducts'
+          "brand categories type occasions recipients colors packagingOption suggestedProducts"
         )
         .skip(skip)
         .limit(limit)
@@ -570,7 +600,7 @@ const getProductsInChocolatesOrHandBouquets = async (req, res) => {
 
     return res.status(200).json({
       success: true,
-      message: 'Products (Chocolates OR Hand Bouquets)',
+      message: "Products (Chocolates OR Hand Bouquets)",
       data: products,
       meta: {
         page,
@@ -591,17 +621,17 @@ const getProductsInChocolatesOrHandBouquets = async (req, res) => {
 /* -------------------------- 4) Occasion equals Friends -------------------------- */
 const getProductsForFriendsOccasion = async (req, res) => {
   try {
-    if (!req.query.limit) req.query.limit = '4';
+    if (!req.query.limit) req.query.limit = "4";
 
     const { page, limit, skip } = getPagination(req.query);
-    const recIds = await recipientIdsByNames(['friends']);
+    const recIds = await recipientIdsByNames(["friends"]);
 
     const query = { recipients: { $in: recIds } };
 
     const [products, total] = await Promise.all([
       Product.find(query)
         .populate(
-          'brand categories type occasions recipients colors packagingOption suggestedProducts'
+          "brand categories type occasions recipients colors packagingOption suggestedProducts"
         )
         .skip(skip)
         .limit(limit)
@@ -611,7 +641,7 @@ const getProductsForFriendsOccasion = async (req, res) => {
 
     return res.status(200).json({
       success: true,
-      message: 'Products (Occasion: Friends)',
+      message: "Products (Occasion: Friends)",
       data: products,
       meta: {
         page,
@@ -632,7 +662,7 @@ const getProductsForFriendsOccasion = async (req, res) => {
 /* ------------------------------ 5) Featured products ---------------------------- */
 const getFeaturedProducts = async (req, res) => {
   try {
-    if (!req.query.limit) req.query.limit = '4';
+    if (!req.query.limit) req.query.limit = "4";
 
     const { page, limit, skip } = getPagination(req.query);
     const query = { isFeatured: true, isActive: true };
@@ -640,7 +670,7 @@ const getFeaturedProducts = async (req, res) => {
     const [products, total] = await Promise.all([
       Product.find(query)
         .populate(
-          'brand categories type occasions recipients colors packagingOption suggestedProducts'
+          "brand categories type occasions recipients colors packagingOption suggestedProducts"
         )
         .skip(skip)
         .limit(limit)
@@ -650,7 +680,7 @@ const getFeaturedProducts = async (req, res) => {
 
     return res.status(200).json({
       success: true,
-      message: 'Featured products',
+      message: "Featured products",
       data: products,
       meta: {
         page,
@@ -671,17 +701,17 @@ const getFeaturedProducts = async (req, res) => {
 /* ------------------------------ 6) Subcategory: Perfumes ------------------------ */
 const getProductsInPerfumes = async (req, res) => {
   try {
-    if (!req.query.limit) req.query.limit = '4';
+    if (!req.query.limit) req.query.limit = "4";
 
     const { page, limit, skip } = getPagination(req.query);
-    const catIds = await subCategoryIdsByNames(['perfumes']);
+    const catIds = await subCategoryIdsByNames(["perfumes"]);
 
     const query = { categories: { $in: catIds } };
 
     const [products, total] = await Promise.all([
       Product.find(query)
         .populate(
-          'brand categories type occasions recipients colors packagingOption suggestedProducts'
+          "brand categories type occasions recipients colors packagingOption suggestedProducts"
         )
         .skip(skip)
         .limit(limit)
@@ -691,7 +721,7 @@ const getProductsInPerfumes = async (req, res) => {
 
     return res.status(200).json({
       success: true,
-      message: 'Products (Perfumes)',
+      message: "Products (Perfumes)",
       data: products,
       meta: {
         page,
@@ -712,17 +742,17 @@ const getProductsInPerfumes = async (req, res) => {
 /* ------------------------- 7) Subcategory: Preserved Flowers -------------------- */
 const getProductsInPreservedFlowers = async (req, res) => {
   try {
-    if (!req.query.limit) req.query.limit = '4';
+    if (!req.query.limit) req.query.limit = "4";
 
     const { page, limit, skip } = getPagination(req.query);
-    const catIds = await subCategoryIdsByNames(['preserved flowers']);
+    const catIds = await subCategoryIdsByNames(["preserved flowers"]);
 
     const query = { categories: { $in: catIds } };
 
     const [products, total] = await Promise.all([
       Product.find(query)
         .populate(
-          'brand categories type occasions recipients colors packagingOption suggestedProducts'
+          "brand categories type occasions recipients colors packagingOption suggestedProducts"
         )
         .skip(skip)
         .limit(limit)
@@ -732,7 +762,7 @@ const getProductsInPreservedFlowers = async (req, res) => {
 
     return res.status(200).json({
       success: true,
-      message: 'Products (Preserved Flowers)',
+      message: "Products (Preserved Flowers)",
       data: products,
       meta: {
         page,
@@ -749,7 +779,6 @@ const getProductsInPreservedFlowers = async (req, res) => {
     return res.status(500).json({ success: false, error: err.message });
   }
 };
-
 
 // Search Products
 const getProductsBySearch = async (req, res) => {
@@ -883,7 +912,7 @@ const createProduct = async (req, res) => {
 
     // ---- price & discount ----
     const basePrice = toNum(b.price); // ORIGINAL price
-    let discount = toNum(b.discount, 0) || 0; // flat discount amount
+    let discount = toNum(b.discount, 0) || 0; // percentage
 
     if (basePrice == null) {
       return res.status(400).json({
@@ -896,14 +925,16 @@ const createProduct = async (req, res) => {
     if (!Number.isFinite(discount) || discount < 0) discount = 0;
 
     // final price after discount (never below 0)
-    const priceAfterDiscount = Math.max(0, basePrice - (basePrice * discount / 100));
+    const priceAfterDiscount = Math.max(
+      0,
+      basePrice - (basePrice * discount) / 100
+    );
 
     // ---- stock fields ----
     const totalStocks = toNum(b.totalStocks);
     let remainingStocks = toNum(b.remainingStocks);
     const explicitTotalPieceSold = toNum(b.totalPieceSold);
 
-    // if remaining not sent but total + totalPieceSold given -> derive remaining
     if (
       remainingStocks == null &&
       totalStocks != null &&
@@ -911,6 +942,18 @@ const createProduct = async (req, res) => {
     ) {
       remainingStocks = Math.max(0, totalStocks - explicitTotalPieceSold);
     }
+
+    // ---- typePieces / totalPieceCarry ----
+    // prefer detailed recipe if provided; fallback to simple totalPieceCarry
+    const parsedTypePieces = parseTypePiecesInput(b.typePieces);
+    const derivedTotalFromTypes = parsedTypePieces.length
+      ? parsedTypePieces.reduce((sum, t) => sum + (t.pieces || 0), 0)
+      : null;
+
+    const finalTotalPieceCarry =
+      derivedTotalFromTypes != null
+        ? derivedTotalFromTypes
+        : toNum(b.totalPieceCarry);
 
     const doc = {
       title: b.title && String(b.title).trim(),
@@ -923,16 +966,20 @@ const createProduct = async (req, res) => {
 
       // 🔹 pricing fields
       price: basePrice, // ORIGINAL price
-      discount, // discount amount
+      discount, // % discount
       priceAfterDiscount, // FINAL price after discount
 
       currency: b.currency || "QAR",
       totalStocks,
       remainingStocks,
+
+      // 🔹 recipe fields
+      typePieces: parsedTypePieces, // array of { type, pieces }
+      totalPieceCarry: finalTotalPieceCarry, // sum(typePieces.pieces) OR body.totalPieceCarry
+
       // ... (rest same as before)
       brand: normalizeId(b.brand),
       categories: normalizeIdArray(pickArray(b, "categories")),
-      totalPieceCarry: toNum(b.totalPieceCarry),
       occasions: normalizeIdArray(pickArray(b, "occasions")),
       type: normalizeIdArray(pickArray(b, "type")),
       recipients: normalizeIdArray(pickArray(b, "recipients")),
@@ -954,7 +1001,6 @@ const createProduct = async (req, res) => {
 
     /* --------- upload media (featured + gallery) ---------- */
 
-    // featured image
     const featuredFile = req.files?.featuredImage?.[0];
     if (featuredFile) {
       const up = await cloudinary.uploader.upload(featuredFile.path, {
@@ -965,7 +1011,6 @@ const createProduct = async (req, res) => {
       doc.featuredImage = String(b.featuredImage);
     }
 
-    // gallery images (+ existing urls)
     const galleryFiles = req.files?.images || [];
     const existingUrls = (() => {
       try {
@@ -1011,7 +1056,13 @@ const createProduct = async (req, res) => {
       errors.push("recipients is required");
     if (!doc.colors || doc.colors.length === 0)
       errors.push("colors is required");
-    if (doc.totalPieceCarry == null) errors.push("totalPieceCarry is required");
+
+    // now we require totalPieceCarry, but it may come from body OR typePieces
+    if (doc.totalPieceCarry == null)
+      errors.push(
+        "totalPieceCarry is required (either as a number or via typePieces)"
+      );
+
     if (typeof doc.isActive !== "boolean") errors.push("isActive is required");
 
     if (errors.length) {
@@ -1026,7 +1077,6 @@ const createProduct = async (req, res) => {
 
     const stockBaseTotal = doc.totalStocks || 0;
 
-    // if still no remainingStocks but we know total -> assume all available
     if (doc.remainingStocks == null && stockBaseTotal) {
       doc.remainingStocks =
         explicitTotalPieceSold != null
@@ -1034,7 +1084,6 @@ const createProduct = async (req, res) => {
           : stockBaseTotal;
     }
 
-    // totalPieceSold:
     if (explicitTotalPieceSold != null) {
       doc.totalPieceSold = explicitTotalPieceSold;
     } else {
@@ -1043,7 +1092,6 @@ const createProduct = async (req, res) => {
       if (!doc.stockStatus) doc.stockStatus = derived.stockStatus;
     }
 
-    // if client sent stockStatus explicitly, keep; otherwise ensure derived
     if (!doc.stockStatus) {
       const { stockStatus } = deriveStock(stockBaseTotal, doc.remainingStocks);
       doc.stockStatus = stockStatus;
@@ -1086,6 +1134,10 @@ const updateProduct = async (req, res) => {
       "totalPieceSold",
       "stockStatus",
       "priceAfterDiscount",
+
+      // NEW:
+      "totalPieceCarry",
+      "typePieces",
     ]);
 
     // ------------- copy / parse normal fields -----------------
@@ -1114,11 +1166,7 @@ const updateProduct = async (req, res) => {
             continue;
           }
         }
-        if (
-          v &&
-          typeof v === "object" &&
-          Object.keys(v).length === 0
-        ) {
+        if (v && typeof v === "object" && Object.keys(v).length === 0) {
           // empty object => ignore
           continue;
         }
@@ -1154,9 +1202,7 @@ const updateProduct = async (req, res) => {
     // ------- PRICE & DISCOUNT LOGIC -------
     if ("price" in b || "discount" in b) {
       const basePrice =
-        "price" in b && b.price !== ""
-          ? toNum(b.price)
-          : toNum(current.price);
+        "price" in b && b.price !== "" ? toNum(b.price) : toNum(current.price);
 
       let disc =
         "discount" in b && b.discount !== ""
@@ -1166,7 +1212,7 @@ const updateProduct = async (req, res) => {
       if (basePrice != null) {
         if (!Number.isFinite(disc) || disc < 0) disc = 0;
 
-        const finalPrice = Math.max(0, basePrice - (basePrice * disc / 100));
+        const finalPrice = Math.max(0, basePrice - (basePrice * disc) / 100);
 
         toUpdate.price = basePrice;
         toUpdate.discount = disc || 0;
@@ -1241,6 +1287,29 @@ const updateProduct = async (req, res) => {
           const { stockStatus } = deriveStock(total, safeRemain);
           toUpdate.stockStatus = stockStatus;
         }
+      }
+    }
+
+    // ------------- TYPE PIECES / TOTAL PIECE CARRY LOGIC -------------
+    if ("typePieces" in b) {
+      const parsedTypePieces = parseTypePiecesInput(b.typePieces);
+      toUpdate.typePieces = parsedTypePieces;
+
+      // recompute totalPieceCarry from recipe
+      const totalFromTypes = parsedTypePieces.reduce(
+        (sum, t) => sum + (t.pieces || 0),
+        0
+      );
+      toUpdate.totalPieceCarry = totalFromTypes;
+    } else if (
+      "totalPieceCarry" in b &&
+      b.totalPieceCarry !== undefined &&
+      b.totalPieceCarry !== ""
+    ) {
+      // fall back: allow direct override of totalPieceCarry
+      const total = toNum(b.totalPieceCarry);
+      if (total != null) {
+        toUpdate.totalPieceCarry = total;
       }
     }
 
