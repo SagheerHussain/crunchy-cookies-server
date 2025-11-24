@@ -750,7 +750,7 @@ const updateOrder = async (req, res) => {
     if (patch.status === "delivered") patch.deliveredAt = new Date();
 
     if (patch.status === "cancelled") {
-      patch.payment = "failed";
+      patch.payment = "partial";
     } else if (patch.status === "returned") {
       patch.payment = "refunded";
     }
