@@ -2,6 +2,7 @@ const express = require("express");
 const path = require("path");
 require("dotenv").config({ path: path.resolve(__dirname, ".env") });
 const cors = require("cors");
+const stripe = require("stripe")(process.env.STRIPE_PRIVATE_KEY);
 
 const { dbConnection } = require("./config/config.js");
 
@@ -42,7 +43,7 @@ const allowedOrigins = [
   "http://localhost:3000",
   "http://localhost:5173",
   "https://crunchy-cookies.skynetsilicon.com",
-  "https://crunchy-cookies-dashboard.vercel.app"
+  "https://crunchy-cookies-dashboard.vercel.app",
 ];
 app.use(
   cors({
@@ -93,17 +94,62 @@ app.use("/api/v1/analytics", analyticsRoutes);
 
 app.use("/api", require("./routes/ping_routes"));
 
-app.listen(PORT, '0.0.0.0', () => {
-    console.log(`Server listening at:`);
-    console.log(`→ http://localhost:${PORT}`);
-    // Auto ping to keep Render awake
-    const axios = require('axios');
-    setInterval(async () => {
-        try {
-            await axios.get('https://crunchy-cookies-server.onrender.com/api/ping');
-            console.log(`[AutoPing] Successful at ${new Date().toISOString()}`);
-        } catch (err) {
-            console.error('[AutoPing] Failed:', err.message);
-        }
-    }, 10 * 60 * 1000); // 10 minutes
+// server/index.js (ya jahan bhi app.post likha hai)
+app.post("/api/v1/create-checkout-session", async (req, res) => {
+  try {
+    const { products, orderCode, userId } = req.body;
+
+    console.log("products", products);
+
+    const CLIENT_URL = process.env.CLIENT_URL || "http://localhost:5173";
+
+    const lineItems = products.map((p) => ({
+      price_data: {
+        currency: "qar",
+        product_data: {
+          name: p.en_name || p.name || "Product",
+        },
+        unit_amount: Math.round(Number(p.price || 0) * 100), // QAR -> dirham
+      },
+      quantity: Number(p.quantity || 1),
+    }));
+
+    const session = await stripe.checkout.sessions.create({
+      mode: "payment",
+      payment_method_types: ["card"],
+      line_items: lineItems,
+      success_url: `${CLIENT_URL}/payment-success?session_id={CHECKOUT_SESSION_ID}`,
+      cancel_url: `${CLIENT_URL}/payment-failed`,
+      metadata: {
+        userId: String(userId || ""),
+        orderCode: String(orderCode || ""),
+      },
+    });
+
+    // ⚠️ IMPORTANT: ab URL bhi bhej rahe hain
+    return res.json({
+      id: session.id,
+      url: session.url,
+    });
+  } catch (err) {
+    console.error("Error in /api/v1/create-checkout-session:", err);
+    return res
+      .status(500)
+      .json({ error: err.message || "Failed to create Stripe session" });
+  }
+});
+
+app.listen(PORT, "0.0.0.0", () => {
+  console.log(`Server listening at:`);
+  console.log(`→ http://localhost:${PORT}`);
+  // Auto ping to keep Render awake
+  const axios = require("axios");
+  setInterval(async () => {
+    try {
+      await axios.get("https://crunchy-cookies-server.onrender.com/api/ping");
+      console.log(`[AutoPing] Successful at ${new Date().toISOString()}`);
+    } catch (err) {
+      console.error("[AutoPing] Failed:", err.message);
+    }
+  }, 10 * 60 * 1000); // 10 minutes
 });

@@ -24,7 +24,7 @@ const orderSchema = new mongoose.Schema(
 
     // core statuses
     status: { type: String, enum: ORDER_STATUS, default: 'pending' },
-    payment: { type: String, enum: PAYMENT_STATUS, default: 'pending' },
+    payment: { type: String, enum: PAYMENT_STATUS, default: 'paid' },
 
     // items
     items: [{ type: mongoose.Schema.Types.ObjectId, ref: 'OrderItem' }],

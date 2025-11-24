@@ -486,7 +486,7 @@ const createOrder = async (req, res) => {
           cardImage,
           placedAt: new Date(),
           status: "pending",
-          payment: "pending",
+          payment: "paid",
         },
       ],
       { session }
