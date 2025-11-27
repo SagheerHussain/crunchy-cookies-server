@@ -31,6 +31,7 @@ const subCategoryRoutes = require("./routes/subCategory.route.js");
 const userRoutes = require("./routes/user.route.js");
 const wishlistRoutes = require("./routes/wishlist.route.js");
 const analyticsRoutes = require("./routes/analytics.route.js");
+const paymentRoutes = require("./routes/payment.route.js");
 
 const { ensureHeaders, appendRow } = require("./utils/googleSheets.js");
 const { google } = require("googleapis");
@@ -63,6 +64,7 @@ app.use(express.urlencoded({ extended: true }));
 dbConnection();
 
 /* Routes */
+let code = "SA-2025-00098";
 app.get("/", (_req, res) =>
   res.status(200).json({ message: "Welcome Back Crunchy Cookies Server" })
 );
@@ -91,28 +93,45 @@ app.use("/api/v1/subCategory", subCategoryRoutes);
 app.use("/api/v1/user", userRoutes);
 app.use("/api/v1/wishlist", wishlistRoutes);
 app.use("/api/v1/analytics", analyticsRoutes);
+app.use("/api/v1/payment", paymentRoutes);
 
 app.use("/api", require("./routes/ping_routes"));
 
 // server/index.js (ya jahan bhi app.post likha hai)
 app.post("/api/v1/create-checkout-session", async (req, res) => {
   try {
-    const { products, orderCode, userId } = req.body;
+    const { products, userId } = req.body;
 
     console.log("products", products);
 
-    const CLIENT_URL = process.env.CLIENT_URL || "https://crunchy-cookies.skynetsilicon.com";
+    const CLIENT_URL = process.env.CLIENT_URL || "http://localhost:5173";
 
+    // 1) Normal products line items (yahan 200 add NAHI karna)
     const lineItems = products.map((p) => ({
       price_data: {
         currency: "qar",
         product_data: {
           name: p.en_name || p.name || "Product",
         },
-        unit_amount: Math.round(Number(p.price || 0) * 100), // QAR -> dirham
+        // 👉 yahan price + deliveryCharges safely add karo
+        unit_amount: Math.round(
+          (Number(p.price || 0) + Number(p.deliveryCharges || 0)) * 100
+        ), // QAR -> dirham
       },
       quantity: Number(p.quantity || 1),
     }));
+
+    // 2) Extra 200 QAR as separate line item (sirf 1 dafa add hoga)
+    lineItems.push({
+      price_data: {
+        currency: "qar",
+        product_data: {
+          name: "Delivery Fee", // ya "Delivery Charges (Flat)"
+        },
+        unit_amount: 200 * 100, // 200 QAR -> dirham
+      },
+      quantity: 1,
+    });
 
     const session = await stripe.checkout.sessions.create({
       mode: "payment",
@@ -122,11 +141,9 @@ app.post("/api/v1/create-checkout-session", async (req, res) => {
       cancel_url: `${CLIENT_URL}/payment-failed`,
       metadata: {
         userId: String(userId || ""),
-        orderCode: String(orderCode || ""),
       },
     });
 
-    // ⚠️ IMPORTANT: ab URL bhi bhej rahe hain
     return res.json({
       id: session.id,
       url: session.url,
@@ -138,6 +155,33 @@ app.post("/api/v1/create-checkout-session", async (req, res) => {
       .json({ error: err.message || "Failed to create Stripe session" });
   }
 });
+
+app.get("/api/v1/checkout-session/:id", async (req, res) => {
+  try {
+    const { id } = req.params;
+
+    // session + payment_intent + charges expand
+    const session = await stripe.checkout.sessions.retrieve(id, {
+      expand: ["payment_intent.charges"],
+    });
+
+    const paymentIntent = session.payment_intent;
+    const charge = paymentIntent?.charges?.data?.[0];
+    const receiptUrl = charge?.receipt_url || null;
+
+    res.json({
+      success: true,
+      session,
+      receiptUrl, // <-- yeh Stripe ki official receipt link
+    });
+  } catch (err) {
+    console.error("Error fetching checkout session:", err);
+    res.status(500).json({
+      success: false,
+      message: err.message || "Failed to fetch session",
+    });
+  }
+})
 
 app.listen(PORT, "0.0.0.0", () => {
   console.log(`Server listening at:`);

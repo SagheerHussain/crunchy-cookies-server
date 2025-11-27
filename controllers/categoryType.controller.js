@@ -87,7 +87,9 @@ const createCategoryType = async (req, res) => {
 const updateCategoryType = async (req, res) => {
   try {
     const { id } = req.params;
-    const { name, ar_name, parent, isActive, totalStock, totalPieceUsed } = req.body;
+    const { name, ar_name, isActive, totalStock, totalPieceUsed } = req.body;
+
+    console.log(req.params, req.body)
 
     const categoryTypeData = await CategoryType.findById({ _id: id }).lean();
     if (!categoryTypeData) {
@@ -105,11 +107,22 @@ const updateCategoryType = async (req, res) => {
     .replace(/^-|-$/g, "")    // trim leading/trailing -
     : categoryTypeData?.slug;
 
-    const remainingStock = totalStock - totalPieceUsed;
+    const remainingStock = Number(totalStock - totalPieceUsed);
+    const percentage = (remainingStock * 100) / totalStock;
+
+    let stockStatus;
+
+    if (percentage > 35 && percentage <= 100) {
+      stockStatus = "in_stock";
+    } else if (percentage > 15 && percentage <= 35) {
+      stockStatus = "low_stock";
+    } else if (percentage > 0 && percentage <= 15) {
+      stockStatus = "out_of_stock";
+    } else stockStatus = "in_stock";
 
     const categoryType = await CategoryType.findByIdAndUpdate(
       { _id: id },
-      { name, ar_name, slug, parent, isActive, totalStock, remainingStock, totalPieceUsed }
+      { name, ar_name, slug, stockStatus, isActive, totalStock: Number(totalStock), remainingStock: Number(remainingStock), totalPieceUsed: Number(totalPieceUsed) }
     );
 
     return res.status(201).json({
@@ -118,6 +131,7 @@ const updateCategoryType = async (req, res) => {
       data: categoryType,
     });
   } catch (error) {
+    console.log(error)
     return res.status(500).json({ success: false, error: error.message });
   }
 };

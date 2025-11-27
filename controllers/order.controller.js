@@ -256,7 +256,7 @@ const getCurrentLatestOrderByUser = async (req, res) => {
     const orders = await Order.find({ user: userId })
       .sort({ createdAt: -1 })
       .lean();
-      
+
     return res
       .status(200)
       .json({
@@ -276,7 +276,7 @@ const createOrder = async (req, res) => {
   try {
     console.log(req.body);
     const {
-      code,
+      // code,
       user,
       senderPhone,
       recipients: rawRecipients = [], // NEW
@@ -293,7 +293,7 @@ const createOrder = async (req, res) => {
     } = req.body;
 
     if (
-      !code ||
+      // !code ||
       !user ||
       !Array.isArray(items) ||
       items.length === 0 ||
@@ -305,7 +305,24 @@ const createOrder = async (req, res) => {
         success: false,
         message: "Please provide code, user, senderPhone, items",
       });
+    };
+
+    // Uniqeu Code generation
+    let code;
+
+    const lastOrder = await Order.findOne().sort({ createdAt: -1 }).limit(1).select("code");
+    console.log("latest ==== >", lastOrder)
+
+    if (!lastOrder?.code) {
+      code = "SA-2025-0001";
+    } else {
+      let splitCode = Number(lastOrder?.code?.split("-")[2].slice(3));
+      console.log("splitCode ==== >", splitCode)
+      let increment = splitCode + 1;
+      code = String(lastOrder?.code?.slice(0, 11).concat(increment));
     }
+
+    console.log("code ==== >",code)
 
     // Only one ongoing order per user
     const userOngoingOrder = await OngoingOrder.findOne({ user });
@@ -428,7 +445,7 @@ const createOrder = async (req, res) => {
             phone: r.phone,
             address: addressId,
             cardMessage: r.cardMessage || null,
-            cardImage: r.cardImage || null,
+            cardImage: r.cardImage || "https://res.cloudinary.com/dso2jjdcz/image/upload/v1762843729/Gemini_Generated_Image_sy9p07sy9p07sy9p_a6gikd.png",
             deliveryInstructions: r.deliveryInstructions || null,
           },
         });
@@ -713,7 +730,7 @@ const createOrder = async (req, res) => {
   } catch (error) {
     try {
       await session.abortTransaction();
-    } catch {}
+    } catch { }
     console.log(error);
     session.endSession();
     return res.status(500).json({ success: false, message: error.message });
@@ -863,7 +880,7 @@ const updateOrder = async (req, res) => {
   } catch (error) {
     try {
       await session.abortTransaction();
-    } catch {}
+    } catch { }
     session.endSession();
     return res.status(500).json({ success: false, message: error.message });
   }
