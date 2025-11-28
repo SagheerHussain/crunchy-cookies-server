@@ -104,7 +104,8 @@ app.post("/api/v1/create-checkout-session", async (req, res) => {
 
     console.log("products", products);
 
-    const CLIENT_URL = process.env.CLIENT_URL || "https://crunchy-cookies.skynetsilicon.com/";
+    const CLIENT_URL =
+      process.env.CLIENT_URL || "https://crunchy-cookies.skynetsilicon.com/";
 
     // 1) Normal products line items (yahan 200 add NAHI karna)
     const lineItems = products.map((p) => ({
@@ -113,10 +114,8 @@ app.post("/api/v1/create-checkout-session", async (req, res) => {
         product_data: {
           name: p.en_name || p.name || "Product",
         },
-        // 👉 yahan price + deliveryCharges safely add karo
-        unit_amount: Math.round(
-          (Number(p.price || 0) + Number(p.deliveryCharges || 0)) * 100
-        ), // QAR -> dirham
+        // 👉 sirf product price, delivery yahan mat add karo
+        unit_amount: Math.round(Number(p.price || 0) * 100), // per 1 quantity
       },
       quantity: Number(p.quantity || 1),
     }));
@@ -181,7 +180,7 @@ app.get("/api/v1/checkout-session/:id", async (req, res) => {
       message: err.message || "Failed to fetch session",
     });
   }
-})
+});
 
 app.listen(PORT, "0.0.0.0", () => {
   console.log(`Server listening at:`);
