@@ -104,7 +104,7 @@ app.post("/api/v1/create-checkout-session", async (req, res) => {
 
     console.log("products", products);
 
-    const CLIENT_URL = process.env.CLIENT_URL || "http://localhost:5173";
+    const CLIENT_URL = process.env.CLIENT_URL || "https://crunchy-cookies.skynetsilicon.com/";
 
     // 1) Normal products line items (yahan 200 add NAHI karna)
     const lineItems = products.map((p) => ({
